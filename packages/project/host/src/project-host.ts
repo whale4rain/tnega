@@ -2,7 +2,7 @@ import { installBuiltinSkills, renderSkillIndex } from '@tnega/coding-agent'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { agents, continuationNudge, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import { artifactLocal } from '@tnega/artifact-local'
 import type { ArtifactStore } from '@tnega/artifact-store'
@@ -49,7 +49,7 @@ import type { BuiltinToolsConfig, MachineSpec } from '@tnega/runtime'
 import { limitUnattendedTurns, type UnattendedLimits } from './unattended-limits.js'
 import { describeToolCall } from './project-activity.js'
 import { mountProjectMemory } from '@tnega/project-memory'
-import { ProjectWorktrees, PullRequestStates, gitResourceData, gitResourceId, trackGitOutcomes, type ProjectPullRequest, type PullRequestLookup } from '@tnega/project-worktrees'
+import { ProjectWorktrees, PullRequestStates, type ProjectGitCommand, gitResourceData, gitResourceId, trackGitOutcomes, type ProjectPullRequest, type PullRequestLookup } from '@tnega/project-worktrees'
 import { projectClock } from './clock.js'
 import { projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 
@@ -103,6 +103,8 @@ export interface ThreadBox {
   cwd: string
   /** Let go of the box for this agent (it pauses once idle). */
   close(): void
+  /** Run a command in the box (git and gh for the thread's branch and pull request); answers its output. */
+  run: ProjectGitCommand
 }
 
 export interface ThreadMachines {
@@ -769,16 +771,42 @@ export class ProjectHost {
     if (this.options.builtinTools !== false) await installBuiltinSkills()
     const skillsPrompt = this.options.builtinTools !== false ? await renderSkillIndex(this.workspace) : ''
     const maxDepth = this.options.maxDepth ?? DEFAULT_THREAD_LIMITS.maxDepth
-    const worktrees = new ProjectWorktrees(this.workspace, directory, record.id, undefined, join(this.tnegaRoot, 'worktrees'))
+    const hostWorktrees = new ProjectWorktrees(this.workspace, directory, record.id, undefined, join(this.tnegaRoot, 'worktrees'))
+    // A thread in a box has its box from before its Agent exists: its branch is made in the box.
+    const boxes = new Map<string, Promise<ThreadBox | undefined>>()
+    const boxFor = (thread: ThreadRecord): Promise<ThreadBox | undefined> => {
+      const machines = this.options.threadMachines
+      if (!machines || !thread.parentId || this.options.builtinTools === false) return Promise.resolve(undefined)
+      let box = boxes.get(thread.id)
+      if (!box) {
+        box = machines.open(thread)
+        boxes.set(thread.id, box)
+        box.catch(() => { if (boxes.get(thread.id) === box) boxes.delete(thread.id) })
+      }
+      return box
+    }
+    ctx.fiber.effect(() => () => {
+      for (const box of boxes.values()) void box.then(open => open?.close(), () => undefined)
+      boxes.clear()
+    }, 'thread boxes')
+    /**
+     * Where a thread's branch lives: a worktree under the box's own workspace
+     * (`.tnega/worktrees/<id>` in the member's folder, made by git in the box),
+     * or one under the tnega home on this host.
+     */
+    const worktreesFor = async (thread: ThreadRecord): Promise<ProjectWorktrees> => {
+      const box = await boxFor(thread)
+      if (!box) return hostWorktrees
+      return new ProjectWorktrees(box.cwd, directory, record.id, box.run, posix.join(box.cwd, '.tnega', 'worktrees'), { remote: true })
+    }
     await ctx.plugin(threadLocal, {
       // Each Agent sees only its role's tools: smaller requests, and the
       // coordinator routes work instead of doing it.
-      // A thread in a box works in the box's own checkout, not in a worktree on this host.
-      prepareWorkspace: (thread: ThreadRecord) => thread.parentId && this.options.builtinTools !== false && !this.options.threadMachines
-        ? worktrees.prepare(thread.id, thread.workspace) : Promise.resolve(undefined),
+      prepareWorkspace: async (thread: ThreadRecord) => thread.parentId && this.options.builtinTools !== false
+        ? (await worktreesFor(thread)).prepare(thread.id, thread.workspace) : undefined,
       completionCheck: async (thread: ThreadRecord) => {
         if (!thread.workspace) return undefined
-        try { return await worktrees.completion(thread.workspace) }
+        try { return await (await worktreesFor(thread)).completion(thread.workspace) }
         catch (error) { return `Cannot verify code delivery: ${error instanceof Error ? error.message : String(error)}` }
       },
       setupAgent: async (agentCtx: Context, thread: ThreadRecord) => {
@@ -812,9 +840,14 @@ export class ProjectHost {
         if (!thread.parentId) return
         this.permissions.set(thread.id, thread.permission)
         this.roles.set(thread.id, projectAgentRole(thread, maxDepth))
-        const box = this.options.builtinTools === false ? undefined : await this.options.threadMachines?.open(thread)
-        if (box) agentCtx.fiber.effect(() => () => box.close(), 'thread box')
-        const cwd = box?.cwd ?? thread.workspace?.cwd ?? this.workspace
+        const box = await boxFor(thread)
+        if (box) {
+          agentCtx.fiber.effect(() => () => {
+            boxes.delete(thread.id)
+            box.close()
+          }, 'thread box')
+        }
+        const cwd = thread.workspace?.cwd ?? box?.cwd ?? this.workspace
         const local = agentCtx.isolate('fs').isolate('process').isolate('search').isolate('spillStore').isolate('sandbox').isolate('skills')
         const config = this.options.builtinTools
         await local.plugin(runtimeCapabilities, {
@@ -860,7 +893,7 @@ export class ProjectHost {
               const current = await threads.get(thread.id)
               if (!current?.workspace) throw new Error('Thread workspace is unavailable')
               try {
-                const workspace = await worktrees.deliver(current.workspace, { title, body }, options.signal)
+                const workspace = await (await worktreesFor(current)).deliver(current.workspace, { title, body }, options.signal)
                 await threads.setWorkspace(thread.id, workspace)
                 await threads.setState(thread.id, 'working')
                 const pr = workspace.pullRequest

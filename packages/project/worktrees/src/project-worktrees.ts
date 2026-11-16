@@ -24,10 +24,19 @@ async function pathIdentity(path: string): Promise<string> {
   return process.platform === 'win32' ? absolute.toLowerCase() : absolute
 }
 
+export interface ProjectWorktreesOptions {
+  /**
+   * The checkouts are on another machine (a thread's box): `command` runs
+   * there, so this process never makes their folders, and a pull request's
+   * body goes on the command line instead of through a file here.
+   */
+  remote?: boolean
+}
+
 /** Durable checkouts are deliberately retained on dispose: never delete unmerged work. */
 export class ProjectWorktrees {
   private tail: Promise<unknown> = Promise.resolve()
-  constructor(private readonly root: string, private readonly state: string, private readonly projectId: string, private readonly command: ProjectGitCommand = runCommand, private readonly checkoutRoot = join(state, 'worktrees')) {}
+  constructor(private readonly root: string, private readonly state: string, private readonly projectId: string, private readonly command: ProjectGitCommand = runCommand, private readonly checkoutRoot = join(state, 'worktrees'), private readonly options: ProjectWorktreesOptions = {}) {}
 
   prepare(threadId: string, saved?: ThreadWorkspace): Promise<ThreadWorkspace | undefined> {
     const task = this.tail.catch(() => undefined).then(() => this.prepareOnce(threadId, saved))
@@ -83,7 +92,8 @@ export class ProjectWorktrees {
       await this.command('git', ['rev-parse', '--show-toplevel'], cwd)
       return workspace
     }
-    await mkdir(this.checkoutRoot, { recursive: true })
+    // `git worktree add` makes the folders it needs; only a checkout on this machine needs its root first.
+    if (!this.options.remote) await mkdir(this.checkoutRoot, { recursive: true })
     let branchExists = false
     try { await this.command('git', ['show-ref', '--verify', `refs/heads/${branch}`], this.root); branchExists = true } catch { /* new branch */ }
     await this.command('git', branchExists ? ['worktree', 'add', checkout, branch] : ['worktree', 'add', '-b', branch, checkout, workspace.baseCommit], this.root)
@@ -116,7 +126,9 @@ export class ProjectWorktrees {
     if (previous && (typeof previous !== 'object' || Reflect.get(previous, 'state') !== 'OPEN')) throw new Error('This Thread’s pull request is closed; start a new Thread for further code changes')
     const headCommit = await git(['rev-parse', 'HEAD'])
     await git(['push', '--set-upstream', 'origin', `HEAD:refs/heads/${workspace.branch}`])
-    if (!previous) {
+    if (!previous && this.options.remote) {
+      await gh(['pr', 'create', '--repo', repo, '--head', workspace.branch, '--base', workspace.baseBranch, '--title', input.title, '--body', input.body])
+    } else if (!previous) {
       const bodyFile = join(this.state, `pr-body-${randomUUID()}.md`)
       try {
         await writeFile(bodyFile, input.body)

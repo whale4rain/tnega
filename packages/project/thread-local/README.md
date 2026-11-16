@@ -27,6 +27,11 @@ CLI Host 在 Git Workspace 中为每个执行 Thread 建立独立 worktree 和
 工具、CodeMode 子调用和按路径发布产物都使用自己的 cwd，共享 Blackboard 与
 Artifact Store 保持 Project 作用域。非 Git Workspace 沿用原目录，不虚构 PR。
 
+服务器给每个 Project thread 一个 box 时（v2 M4），worktree 由 box 里的 git 建在
+box 工作区之下（`/workspace/.tnega/worktrees/<threadId>`，即成员文件夹的
+`.tnega/worktrees/`），分支名相同；`deliver_thread` 的 git 与 gh 也在 box 里运行，
+凭据只经 egress proxy 加上。交付后的 PR 卡片与本机一样进 Library。
+
 `ThreadRecord.workspace` 保存 cwd、branch、baseCommit、baseBranch，以及成功交付后
 的 `pullRequest: {url, number, headCommit}`。旧记录缺字段仍可读，下一次激活时准备
 工作目录；恢复会复用分支和目录，目录/分支不一致时拒绝运行。worktree 与恢复记录
