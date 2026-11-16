@@ -80,6 +80,7 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       ['--owner <user>', 'user whose folders boxes may mount and write as; repeat for more'],
       ['--socket <path>', 'unix socket to listen on (default /run/tnega/boxd.sock)'],
       ['--group <name>', 'group that may connect (socket 0660); without it only root'],
+      ['--pin-root <dir>', 'where checked host folders are bind mounted (default /run/tnega/pins)'],
       ['--state-dir <dir>', 'box records and bundles (default /var/lib/tnega/machines)'],
       ['--templates-dir <dir>', 'template root filesystems (default /var/lib/tnega/templates)'],
       ['--runsc-root <dir>', 'runsc state (default /run/tnega-runsc)'],

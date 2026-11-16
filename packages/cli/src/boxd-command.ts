@@ -17,6 +17,7 @@ export interface BoxdArgs {
   workspaceRoots: string[]
   /** Users (names or uids) whose folders boxes may mount and write as. */
   owners: string[]
+  pinRoot?: string
   config: GvisorMachineConfig
 }
 
@@ -27,6 +28,7 @@ export function parseBoxdArgs(args: readonly string[]): BoxdArgs {
   let group: string | undefined
   const workspaceRoots: string[] = []
   const owners: string[] = []
+  let pinRoot: string | undefined
   const config: GvisorMachineConfig = {}
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index]!
@@ -41,6 +43,7 @@ export function parseBoxdArgs(args: readonly string[]): BoxdArgs {
       case '--group': group = value(); break
       case '--workspace-root': workspaceRoots.push(resolve(value())); break
       case '--owner': owners.push(value()); break
+      case '--pin-root': pinRoot = resolve(value()); break
       case '--state-dir': config.stateDir = resolve(value()); break
       case '--templates-dir': config.templatesDir = resolve(value()); break
       case '--runsc-root': config.runscRoot = resolve(value()); break
@@ -62,7 +65,7 @@ export function parseBoxdArgs(args: readonly string[]): BoxdArgs {
     throw new CliError('tnega boxd needs --owner <user>: whose folders boxes may mount and write as, such as tnega-server')
   }
   if (owners.some(owner => owner === 'root' || owner === '0')) throw new CliError('--owner may not be root: a box never writes as root')
-  return { socket: resolve(socket), ...(group === undefined ? {} : { group }), workspaceRoots, owners, config }
+  return { socket: resolve(socket), ...(group === undefined ? {} : { group }), workspaceRoots, owners, ...(pinRoot === undefined ? {} : { pinRoot }), config }
 }
 
 export async function runBoxdCommand(args: readonly string[]): Promise<number> {
@@ -76,7 +79,14 @@ export async function runBoxdCommand(args: readonly string[]): Promise<number> {
   const owners = await Promise.all(parsed.owners.map(owner => userId(owner)))
   const scope = new Context()
   const machines = new GvisorMachines(scope, parsed.config)
-  const boxd = await startBoxd({ socket: parsed.socket, machines, workspaceRoots: parsed.workspaceRoots, owners, ...(gid === undefined ? {} : { gid }) })
+  const boxd = await startBoxd({
+    socket: parsed.socket,
+    machines,
+    workspaceRoots: parsed.workspaceRoots,
+    owners,
+    ...(gid === undefined ? {} : { gid }),
+    ...(parsed.pinRoot === undefined ? {} : { pinRoot: parsed.pinRoot }),
+  })
   process.stderr.write(`tnega boxd: listening on ${boxd.socket}${parsed.group ? ` for group ${parsed.group}` : ' (root only)'}\n`)
   return await new Promise<number>(done => {
     const stop = (): void => {
