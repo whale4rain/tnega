@@ -26,17 +26,20 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
+/** No background memory extraction: it would still write to the project folder while a test removes it. */
+const QUIET = { projectMemory: { enabled: false } }
+
 const llm: LLMAdapter = { complete: async () => ({ finishReason: 'stop', content: 'Done.' }) }
 
 async function fixture(): Promise<{ host: ProjectHost; store: SessionStore; workspace: string }> {
   const workspace = await mkdtemp(join(tmpdir(), 'tnega-thread-logs-'))
-  cleanups.push(() => rm(workspace, { recursive: true, force: true }))
-  cleanups.push(() => rm(workspaceProjectStateRoot(workspace), { recursive: true, force: true }))
+  cleanups.push(() => rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))
+  cleanups.push(() => rm(workspaceProjectStateRoot(workspace), { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))
   const ctx = new Context()
   const mounted = await ctx.plugin(sessionStorePg, { sql: db })
   cleanups.push(() => mounted.dispose())
   const store = ctx.get('sessionStore')
-  const host = new ProjectHost({ workspace, llm, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker(), threadSessions: store })
+  const host = new ProjectHost({ workspace, llm, systemConfig: QUIET, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker(), threadSessions: store })
   cleanups.push(() => host.dispose())
   return { host, store, workspace }
 }
@@ -58,7 +61,7 @@ it('keeps Thread Sessions in the session store, not in files, and reads them bac
 
   // A new host over the same database (a server restart) reads the history without running the thread.
   await host.dispose()
-  const again = new ProjectHost({ workspace, llm, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker(), threadSessions: store })
+  const again = new ProjectHost({ workspace, llm, systemConfig: QUIET, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker(), threadSessions: store })
   cleanups.push(() => again.dispose())
   const detail = await again.thread(record.id, child.id)
   expect(detail.events.some(event => event.type === 'assistant/message')).toBe(true)
@@ -71,9 +74,8 @@ it('deletes a project\'s Thread Sessions with the project', async () => {
   const { host, store, workspace } = await fixture()
   const record = await host.create({ name: 'Short-lived' })
   const project = await host.mount(record.id)
-  const agent = await project.threads.activate(record.coordinatorId)
-  await agent.followup({ text: 'Hello' })
-  await agent.whenIdle()
+  // Activating writes the thread's identity; no turn runs, so nothing is still publishing when it is deleted.
+  await project.threads.activate(record.coordinatorId)
   const key = projectThreadWorkspace(workspace, record.id)
   expect(await store.list(key)).not.toHaveLength(0)
   await host.delete(record.id)

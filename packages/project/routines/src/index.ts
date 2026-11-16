@@ -13,9 +13,10 @@ import type { ToolsService } from '@tnega/tools'
  * Blackboard facts of kind `routine`, which puts them in the snapshot and the
  * change stream for free.
  *
- * They run while the project is mounted in this process. A run that was due
- * while nothing was running happens once on the next tick, not once per missed
- * slot.
+ * Locally they run while the project is mounted in this process. A run that
+ * was due while nothing was running happens once on the next tick, not once
+ * per missed slot. On a server a scheduler drives them instead (`wake`), so
+ * they run with no window open.
  */
 export type RoutineSchedule =
   | { kind: 'daily'; time: string }
@@ -202,6 +203,20 @@ export class RoutineRunner {
       const message = error instanceof Error ? error.message : String(error)
       return await this.change(id, author, current => ({ ...current, lastError: message, nextRunAt: now + RETRY_AFTER_MS }))
     }
+  }
+
+  /**
+   * Run a routine for the slot `runAt` that a scheduler claimed (a server's
+   * `run.wake`). Safe to repeat: a slot that already ran (the routine's next
+   * run is past it), a routine that was paused or deleted, and a paused
+   * project are left alone. Answers whether it ran.
+   */
+  async wake(id: string, runAt: number): Promise<boolean> {
+    if (this.disposed || this.scope.isPaused?.()) return false
+    const fact = await this.scope.blackboard.read<RoutineData>('routine', id)
+    if (!fact || fact.deleted || !fact.data.enabled || fact.data.nextRunAt > runAt) return false
+    await this.run(id, 'routine')
+    return true
   }
 
   async tick(): Promise<void> {

@@ -1,4 +1,5 @@
-import { accountsCapability, boxMachine, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
+import { accountsCapability, boxMachine, controlCapability, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
+import { projectRoutineWakes } from '@tnega/project-host'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { isAbsolute, relative, resolve } from 'node:path'
@@ -163,6 +164,8 @@ export async function startWebServer(
   // Postgres when TNEGA_SESSION_STORE=postgres and DATABASE_URL say so.
   const state = options.state ?? stateSpecFromEnv()
   await root.plugin(stateCapability, state)
+  // Effects and schedules live with the state: on Postgres, routines run with no window open.
+  await root.plugin(controlCapability, state)
   // Remembered secrets go with the state: sealed in Postgres with a master key, else the owner-only file.
   const secretVault = await openSecretVault(state)
   // One session index per host, in the tnega home; it opens on the first search.
@@ -196,6 +199,7 @@ export async function startWebServer(
     sessions: root.get('sessionStore'),
     // On Postgres, Project Thread logs are rows too, not files on the server's disk.
     ...(state.sessions.kind === 'postgres' ? { projectThreadLogs: root.get('sessionStore') } : {}),
+    ...(root.get('effects', false) ? { effects: root.get('effects') } : {}),
   }
 
   // Files, terminals, browser view and setup hints act on this machine: the
@@ -205,6 +209,7 @@ export async function startWebServer(
     ...(startConfig.computerDriverPath ? { computerDriverPath: startConfig.computerDriverPath } : {}),
   })
   await root.plugin(projectApi, { host: (workspace: string) => projectHostFor(context, workspace) })
+  if (context.effects) await root.plugin(projectRoutineWakes, { host: (workspace: string) => projectHostFor(context, workspace) })
   await root.plugin(usageRoutes, { configFile })
   await root.plugin(contextInsightsRoutes, { configFile })
   // /btw and the temporary chat: answered by the session's model (or the one picked), never saved.

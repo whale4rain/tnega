@@ -709,6 +709,31 @@ importers:
         specifier: workspace:*
         version: link:../session-store/session-store-jsonl
 
+  packages/control/effects:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/control/effects-pg:
+    dependencies:
+      '@tnega/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@tnega/effects':
+        specifier: workspace:*
+        version: link:../effects
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@electric-sql/pglite':
+        specifier: 0.5.12
+        version: 0.5.12
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+
   packages/core: {}
 
   packages/daemon/browser-remote:
@@ -1055,6 +1080,9 @@ importers:
       '@tnega/daemon-routes':
         specifier: workspace:*
         version: link:../daemon/daemon-routes
+      '@tnega/effects':
+        specifier: workspace:*
+        version: link:../control/effects
       '@tnega/goal':
         specifier: workspace:*
         version: link:../goal
@@ -1592,6 +1620,9 @@ importers:
       '@tnega/core':
         specifier: workspace:*
         version: link:../../core
+      '@tnega/effects':
+        specifier: workspace:*
+        version: link:../../control/effects
       '@tnega/home':
         specifier: workspace:*
         version: link:../../home
@@ -1662,6 +1693,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.5.12
         version: 0.5.12
+      '@tnega/effects-pg':
+        specifier: workspace:*
+        version: link:../../control/effects-pg
       '@tnega/session-store-pg':
         specifier: workspace:*
         version: link:../../session-store/session-store-pg
@@ -2030,6 +2064,9 @@ importers:
       '@tnega/daemons':
         specifier: workspace:*
         version: link:../daemon/daemons
+      '@tnega/effects-pg':
+        specifier: workspace:*
+        version: link:../control/effects-pg
       '@tnega/egress-proxy':
         specifier: workspace:*
         version: link:../machine/egress-proxy

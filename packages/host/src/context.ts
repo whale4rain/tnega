@@ -11,6 +11,7 @@ import type { WebServerService } from '@tnega/web-kit'
 import type { SqliteSessionIndex } from '@tnega/session-search-sqlite'
 import type { SecretVault } from '@tnega/secrets-local'
 import type { SessionStore } from '@tnega/session-store'
+import type { EffectService } from '@tnega/effects'
 import type { MachineSpec } from '@tnega/runtime'
 
 /**
@@ -86,4 +87,6 @@ export interface ServerContext {
    * Postgres store. Unset in local mode, where they stay JSONL files.
    */
   projectThreadLogs?: SessionStore
+  /** The server's effects queue and schedules (`ctx.effects`); unset in local mode. */
+  effects?: EffectService
 }

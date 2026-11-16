@@ -32,7 +32,9 @@ import { projectLocal } from '@tnega/project-local'
 import type { ProjectRecord, ProjectsService } from '@tnega/project'
 import { SessionLog, foldUsage, type SessionBackend, type SessionEvent } from '@tnega/session'
 import type { SessionStore } from '@tnega/session-store'
-import { RoutineRunner, registerRoutineTools } from '@tnega/project-routines'
+import type { EffectService } from '@tnega/effects'
+import { RoutineRunner, registerRoutineTools, type RoutineData } from '@tnega/project-routines'
+import { ROUTINE_SCHEDULE, routineScheduleKey } from './routine-wakes.js'
 import { foldApprovalMode } from '@tnega/approval-review'
 
 /** How many of the user's latest room messages a thread's reviewer reads as authorization. */
@@ -77,6 +79,12 @@ export interface ProjectHostOptions {
    * the folder's Session list.
    */
   threadSessions?: SessionStore
+  /**
+   * A server's control loop. With it, routines are mirrored into its schedule
+   * and run from there (see {@link projectRoutineWakes}), with no window open;
+   * without it they tick while the project is mounted in this process.
+   */
+  effects?: EffectService
 }
 
 /** The store workspace a project's Thread Sessions live under: beside the project's artifacts in the folder. */
@@ -330,6 +338,12 @@ export class ProjectHost {
       await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
     }
     this.idleSummaries.delete(id)
+    const effects = this.options.effects
+    if (effects) {
+      for (const entry of await effects.schedules(ROUTINE_SCHEDULE)) {
+        if (entry.spec.projectId === id) await effects.unschedule(ROUTINE_SCHEDULE, entry.key)
+      }
+    }
     const store = this.options.threadSessions
     if (store) {
       const key = projectThreadWorkspace(this.workspace, id)
@@ -889,7 +903,20 @@ export class ProjectHost {
       isPaused: () => record.paused === true,
     })
     registerRoutineTools(toolService, routines)
-    routines.start()
+    const effects = this.options.effects
+    if (effects) {
+      // The server's scheduler runs them: mirror every routine now and on each change.
+      const mirror = async (routineId: string): Promise<void> => {
+        const fact = await ctx.get('blackboard').read<RoutineData>('routine', routineId)
+        await this.mirrorRoutine(effects, record.id, routineId, fact && !fact.deleted ? fact.data : undefined)
+      }
+      ctx.on('blackboard/commit', (event: { records: readonly FactRecord[] }) => {
+        for (const entry of event.records) if (entry.kind === 'routine') void mirror(entry.id).catch(() => undefined)
+      })
+      for (const fact of await routines.list()) await this.mirrorRoutine(effects, record.id, fact.id, fact.data)
+    } else {
+      routines.start()
+    }
     ctx.fiber.effect(() => () => routines.dispose(), 'stop routines')
     await ctx.plugin(ptcCapability, {
       mode: this.options.systemConfig?.codeMode ? 'ptc' : 'native',
@@ -909,6 +936,21 @@ export class ProjectHost {
       routines,
       directory,
     }
+  }
+
+  /** Keep the server's schedule entry for one routine in step with its fact; `undefined` removes it. */
+  private async mirrorRoutine(effects: EffectService, projectId: string, routineId: string, data: RoutineData | undefined): Promise<void> {
+    const key = routineScheduleKey(projectId, routineId)
+    if (!data?.enabled) {
+      await effects.unschedule(ROUTINE_SCHEDULE, key)
+      return
+    }
+    await effects.schedule({
+      kind: ROUTINE_SCHEDULE,
+      key,
+      spec: { workspace: this.workspace, projectId, routineId, schedule: data.schedule },
+      nextRunAt: data.nextRunAt,
+    })
   }
 
   private threadLog(projectId: string, store: SessionStore): (threadId: string) => SessionBackend {

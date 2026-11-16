@@ -19,12 +19,13 @@
     "@tnega/coding-agent": "workspace:*",
     "@tnega/config": "workspace:*",
     "@tnega/core": "workspace:*",
+    "@tnega/effects": "workspace:*",
     "@tnega/home": "workspace:*",
     "@tnega/jobs-local": "workspace:*",
+    "@tnega/loop-guard": "workspace:*",
     "@tnega/project": "workspace:*",
     "@tnega/project-local": "workspace:*",
     "@tnega/project-loop": "workspace:*",
-    "@tnega/loop-guard": "workspace:*",
     "@tnega/project-memory": "workspace:*",
     "@tnega/project-routines": "workspace:*",
     "@tnega/project-worktrees": "workspace:*",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.12",
+    "@tnega/effects-pg": "workspace:*",
     "@tnega/session-store-pg": "workspace:*"
   }
 }

@@ -5,6 +5,7 @@ packages:
   - packages/daemon/*
   - packages/terminal/*
   - packages/machine/*
+  - packages/control/*
   - packages/shell/*
   - packages/session-search/*
   - packages/session-store/*
