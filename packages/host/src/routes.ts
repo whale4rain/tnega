@@ -809,6 +809,7 @@ export async function projectHostFor(
     config.codeMode ? 'ptc' : 'native',
     config.fsGuard ?? 'warn',
   ].join('|')
+  const threadMachines = context.projectThreadMachines?.(path)
   const existing = context.projectHosts?.get(path)
   if (existing?.signature === signature) return existing.host
   if (existing) {
@@ -827,6 +828,8 @@ export async function projectHostFor(
     sandboxNetwork: sandboxNetworkFrom(context.configFile),
     ...(context.projectThreadLogs ? { threadSessions: context.projectThreadLogs } : {}),
     ...(context.effects ? { effects: context.effects } : {}),
+    ...(threadMachines ? { threadMachines } : {}),
+    ...(context.unattended ? { unattended: context.unattended } : {}),
     builtinTools: {
       cwd: path,
       processes: processesFor(context, path),

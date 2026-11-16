@@ -45,7 +45,8 @@ import { toolBlackboard } from '@tnega/tool-blackboard'
 import { toolBox } from '@tnega/tool-box'
 import { toolThread } from '@tnega/tool-thread'
 import type { ToolsService } from '@tnega/tools'
-import type { BuiltinToolsConfig } from '@tnega/runtime'
+import type { BuiltinToolsConfig, MachineSpec } from '@tnega/runtime'
+import { limitUnattendedTurns, type UnattendedLimits } from './unattended-limits.js'
 import { describeToolCall } from './project-activity.js'
 import { mountProjectMemory } from '@tnega/project-memory'
 import { ProjectWorktrees, PullRequestStates, gitResourceData, gitResourceId, trackGitOutcomes, type ProjectPullRequest, type PullRequestLookup } from '@tnega/project-worktrees'
@@ -85,6 +86,30 @@ export interface ProjectHostOptions {
    * without it they tick while the project is mounted in this process.
    */
   effects?: EffectService
+  /**
+   * A box for each Project thread (a server that runs boxes): the thread's
+   * files, commands and processes are in its own box, which pauses while the
+   * thread waits. The coordinator stays on the host; it routes work.
+   */
+  threadMachines?: ThreadMachines
+  /** Limits for turns nobody watches; a server sets them. */
+  unattended?: UnattendedLimits
+}
+
+/** A Project thread's box, as the composition layer opens it. */
+export interface ThreadBox {
+  machine: MachineSpec
+  /** The workspace inside the box. */
+  cwd: string
+  /** Let go of the box for this agent (it pauses once idle). */
+  close(): void
+}
+
+export interface ThreadMachines {
+  /** The thread's box, started or resumed; `undefined` runs it on this host. */
+  open(thread: ThreadRecord): Promise<ThreadBox | undefined>
+  /** Stop and forget the boxes of these threads (their project was deleted). */
+  forget(threadIds: readonly string[]): Promise<void>
 }
 
 /** The store workspace a project's Thread Sessions live under: beside the project's artifacts in the folder. */
@@ -338,6 +363,11 @@ export class ProjectHost {
       await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
     }
     this.idleSummaries.delete(id)
+    const machines = this.options.threadMachines
+    if (machines) {
+      const threadIds = await this.threadIds(id).catch(() => [])
+      await machines.forget(threadIds)
+    }
     const effects = this.options.effects
     if (effects) {
       for (const entry of await effects.schedules(ROUTINE_SCHEDULE)) {
@@ -743,7 +773,8 @@ export class ProjectHost {
     await ctx.plugin(threadLocal, {
       // Each Agent sees only its role's tools: smaller requests, and the
       // coordinator routes work instead of doing it.
-      prepareWorkspace: (thread: ThreadRecord) => thread.parentId && this.options.builtinTools !== false
+      // A thread in a box works in the box's own checkout, not in a worktree on this host.
+      prepareWorkspace: (thread: ThreadRecord) => thread.parentId && this.options.builtinTools !== false && !this.options.threadMachines
         ? worktrees.prepare(thread.id, thread.workspace) : Promise.resolve(undefined),
       completionCheck: async (thread: ThreadRecord) => {
         if (!thread.workspace) return undefined
@@ -752,19 +783,48 @@ export class ProjectHost {
       },
       setupAgent: async (agentCtx: Context, thread: ThreadRecord) => {
         scopeAgentTools(agentCtx, projectAgentRole(thread, maxDepth))
+        const unattended = this.options.unattended
+        if (unattended) {
+          limitUnattendedTurns(agentCtx, unattended, {
+            agent: () => registry.get(thread.id),
+            isRoutine: async () => (await ctx.get('blackboard').list<RoutineData>('routine'))
+              .some(fact => !fact.deleted && fact.data.threadId === thread.id),
+            onLimit: hit => {
+              const why = hit.kind === 'time'
+                ? `Stopped: the turn ran past the ${Math.round(hit.turnMs / 60_000)}-minute limit for unattended work`
+                : `Stopped: the turn used ${hit.used} tokens, over this routine's budget of ${hit.budget}`
+              // Once the turn has closed, the thread reports itself blocked: its parent hears
+              // why, and the report sets the state, so the end of the turn cannot undo it.
+              const stopped = registry.get(thread.id)
+              const parentId = thread.parentId
+              if (parentId && stopped) {
+                void stopped.whenIdle().then(() => ctx.get('box').send({
+                  sender: agentAddress(thread.id),
+                  recipients: [agentAddress(parentId)],
+                  placement: { kind: 'thread', threadId: thread.id },
+                  kind: 'blocked',
+                  text: why,
+                })).catch(() => undefined)
+              }
+            },
+          })
+        }
         if (!thread.parentId) return
         this.permissions.set(thread.id, thread.permission)
         this.roles.set(thread.id, projectAgentRole(thread, maxDepth))
-        const cwd = thread.workspace?.cwd ?? this.workspace
+        const box = this.options.builtinTools === false ? undefined : await this.options.threadMachines?.open(thread)
+        if (box) agentCtx.fiber.effect(() => () => box.close(), 'thread box')
+        const cwd = box?.cwd ?? thread.workspace?.cwd ?? this.workspace
         const local = agentCtx.isolate('fs').isolate('process').isolate('search').isolate('spillStore').isolate('sandbox').isolate('skills')
         const config = this.options.builtinTools
         await local.plugin(runtimeCapabilities, {
           workspace: cwd,
+          ...(box ? { machine: box.machine } : {}),
           permission: thread.permission,
           ...(this.options.sandboxRequired ? { sandboxRequired: true } : {}),
           ...(this.options.sandboxNetwork !== undefined ? { sandboxNetwork: this.options.sandboxNetwork } : {}),
           sessionId: thread.id,
-          promptWorkspace: this.workspace,
+          promptWorkspace: box ? box.cwd : this.workspace,
           builtin: config === false ? false : { ...(config ?? {}) },
           // The PTC runtime is project-scoped; a thread mounts only its tool.
           ptc: false,
@@ -935,6 +995,19 @@ export class ProjectHost {
       tools: toolService,
       routines,
       directory,
+    }
+  }
+
+  /** Every thread of a project, from its Blackboard, without mounting it. */
+  private async threadIds(projectId: string): Promise<string[]> {
+    const mounted = this.open.get(projectId)
+    if (mounted) return (await (await mounted).threads.list()).map(thread => thread.id)
+    const ctx = new Context()
+    try {
+      await ctx.plugin(blackboardLocal, { root: join(this.tnegaRoot, 'projects', projectId, 'blackboard') })
+      return (await ctx.get('blackboard').list('agent')).map(fact => fact.id)
+    } finally {
+      await ctx.fiber.dispose()
     }
   }
 

@@ -4,7 +4,7 @@ import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { ProcessRegistry, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, type PermissionMode } from '@tnega/approval-host'
-import { ProjectHost } from '@tnega/project-host'
+import { ProjectHost, type ThreadMachines, type UnattendedLimits } from '@tnega/project-host'
 import type { HotPluginHost } from '@tnega/plugin-host'
 import type { PluginWorkshop } from '@tnega/plugin-host'
 import type { WebServerService } from '@tnega/web-kit'
@@ -89,4 +89,8 @@ export interface ServerContext {
   projectThreadLogs?: SessionStore
   /** The server's effects queue and schedules (`ctx.effects`); unset in local mode. */
   effects?: EffectService
+  /** A box per Project thread of a member's folder, when the server runs boxes. */
+  projectThreadMachines?: (workspace: string) => ThreadMachines | undefined
+  /** Limits for Project turns nobody watches (a server). */
+  unattended?: UnattendedLimits
 }

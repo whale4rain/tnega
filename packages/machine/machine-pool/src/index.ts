@@ -10,8 +10,10 @@ import { startEgressProxy, type EgressPolicy, type EgressProxy, type KeyPairPem 
 import { DEFAULT_SETUP_HOSTS, ENVIRONMENT_FILE, egressCredentials, parseEnvironment, type Environment } from '@tnega/environment'
 import { MachineError, type BoxIsolation, type BoxNetwork, type BoxResources, type BoxSpec, type MachineService } from '@tnega/machine'
 import { millis, optionalText, poolClient, text, type SqlClient, type SqlQueryable } from './sql.js'
+import { LeasedLink } from './leased-link.js'
 
 export { poolClient, type PgPoolLike, type SqlClient, type SqlQueryable } from './sql.js'
+export { LeasedLink, type LeasedLinkOptions } from './leased-link.js'
 
 declare module '@tnega/core' {
   interface ServiceMap {
@@ -99,6 +101,8 @@ export interface MachineRow {
   id: string
   accountId: string
   workspace: string
+  /** Which of the workspace's boxes: `''` for the person's own runs, `thread:<id>` for a Project thread. */
+  scope: string
   provider: string
   ref?: string
   state: 'cold' | 'running' | 'paused'
@@ -116,7 +120,9 @@ export class MachinePoolError extends Error {
   }
 }
 
-const WORKSPACE_PATH = '/workspace'
+/** Where every box has its workspace. */
+export const BOX_WORKSPACE = '/workspace'
+const WORKSPACE_PATH = BOX_WORKSPACE
 
 const TABLES = [
   `create table if not exists machine (
@@ -124,9 +130,12 @@ const TABLES = [
     provider text not null, ref text,
     state text not null default 'cold' check (state in ('cold','running','paused')),
     spec_hash text not null default '', device_id uuid, egress_hash text,
-    created_at timestamptz not null default now(), last_used timestamptz not null default now(),
-    unique (account_id, workspace)
+    created_at timestamptz not null default now(), last_used timestamptz not null default now()
   )`,
+  // A workspace has a box for the person's own runs and one per Project thread (M4).
+  `alter table machine add column if not exists scope text not null default ''`,
+  `alter table machine drop constraint if exists machine_account_id_workspace_key`,
+  `create unique index if not exists machine_account_workspace_scope on machine (account_id, workspace, scope)`,
   `create table if not exists machine_session (
     machine_id uuid not null references machine on delete cascade,
     workspace text not null, session_id text not null,
@@ -142,7 +151,7 @@ export async function bootstrapMachineTables(sql: SqlClient): Promise<void> {
   })
 }
 
-const COLUMNS = `id::text as id, account_id::text as account_id, workspace, provider, ref, state, spec_hash, device_id::text as device_id, egress_hash, last_used`
+const COLUMNS = `id::text as id, account_id::text as account_id, workspace, scope, provider, ref, state, spec_hash, device_id::text as device_id, egress_hash, last_used`
 
 function isState(value: string): value is MachineRow['state'] {
   return value === 'cold' || value === 'running' || value === 'paused'
@@ -160,6 +169,7 @@ function rowFrom(row: unknown): StoredRow {
     id: text(row, 'id'),
     accountId: text(row, 'account_id'),
     workspace: text(row, 'workspace'),
+    scope: text(row, 'scope'),
     provider: text(row, 'provider'),
     state,
     specHash: text(row, 'spec_hash'),
@@ -283,13 +293,18 @@ export class MachinePool extends Service {
     return rows.map(rowFrom)
   }
 
-  /** The box for an account's workspace, running and connected, with a lease on it. */
-  async acquire(input: { accountId: string; workspace: string; sessionId?: string; signal?: AbortSignal }): Promise<MachineLease> {
+  /**
+   * The box for an account's workspace, running and connected, with a lease
+   * on it. `scope` picks one of the workspace's boxes: a Project thread has
+   * its own (`thread:<id>`), so its commands and processes are its own and it
+   * pauses on its own.
+   */
+  async acquire(input: { accountId: string; workspace: string; scope?: string; sessionId?: string; signal?: AbortSignal }): Promise<MachineLease> {
     const { rows } = await this.sql.query(
-      `insert into machine (id, account_id, workspace, provider) values ($1::uuid, $2::uuid, $3, $4)
-       on conflict (account_id, workspace) do update set provider = excluded.provider
+      `insert into machine (id, account_id, workspace, scope, provider) values ($1::uuid, $2::uuid, $3, $4, $5)
+       on conflict (account_id, workspace, scope) do update set provider = excluded.provider
        returning ${COLUMNS}`,
-      [randomUUID(), input.accountId, input.workspace, this.machines.kind],
+      [randomUUID(), input.accountId, input.workspace, input.scope ?? '', this.machines.kind],
     )
     const id = rowFrom(rows[0]).id
     this.busy.set(id, (this.busy.get(id) ?? 0) + 1)
@@ -322,6 +337,27 @@ export class MachinePool extends Service {
       this.leave(id)
       throw error
     }
+  }
+
+  /**
+   * A link to a scope's box that outlives single leases: it holds a lease
+   * while calls run and lets go when they stop, so the box pauses while the
+   * agent waits and resumes on its next call. For a Project thread's agent.
+   */
+  async leasedLink(input: { accountId: string; workspace: string; scope: string; idleMs?: number }): Promise<LeasedLink> {
+    return await LeasedLink.open({
+      acquire: () => this.acquire({ accountId: input.accountId, workspace: input.workspace, scope: input.scope }),
+      ...(input.idleMs === undefined ? {} : { idleMs: input.idleMs }),
+    })
+  }
+
+  /** Stop and forget one scope's box, if it has one (a Project thread that was deleted). */
+  async stopScope(input: { accountId: string; workspace: string; scope: string }): Promise<void> {
+    const { rows } = await this.sql.query(
+      `select id::text as id from machine where account_id = $1::uuid and workspace = $2 and scope = $3`,
+      [input.accountId, input.workspace, input.scope],
+    )
+    for (const row of rows) await this.stop(text(row, 'id'))
   }
 
   private leave(id: string): void {

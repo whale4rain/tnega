@@ -12,16 +12,24 @@ import { createRootCertificate } from '@tnega/egress-proxy'
 import { MachineService, type BoxSpec, type MachineRef, type MachineState } from '@tnega/machine'
 import { machinePool, MachinePoolError, type MachinePool, type MachinePoolConfig } from '../src/index.js'
 
+/** Which link served each call, by the order links were made: a call never needs an answer here. */
+const linkCalls: string[] = []
+let links = 0
+
 function fakeLink(deviceId: string): DaemonLink {
   const listeners = new Set<(reason?: string) => void>()
   let closed = false
+  const serial = ++links
   return {
     deviceId,
     protocolVersion: 2,
     capabilities: { fs: true, process: true, http: true, platform: 'linux' },
     workspaces: [{ id: 'ws_box', path: '/workspace' }],
     get closed() { return closed },
-    call: () => Promise.reject(new Error('not used')),
+    call: method => {
+      linkCalls.push(`${serial} ${method}`)
+      return closed ? Promise.reject(new Error('link closed')) : Promise.reject(new Error('answered'))
+    },
     onNotification: () => () => undefined,
     onClose(listener) { listeners.add(listener); return () => { listeners.delete(listener) } },
     close(reason) {
@@ -211,6 +219,45 @@ describe('machine pool', () => {
     lease.release()
     await pool.stop(lease.machineId)
     expect(pool.egressPolicy(spec.network.egress.token)).toBeUndefined()
+  })
+})
+
+describe('machine pool scopes', () => {
+  it('gives each Project thread of a workspace its own box', async () => {
+    const pool = await openPool()
+    const own = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const thread = await pool.acquire({ accountId: mia.id, workspace: dir, scope: 'thread:t1' })
+    const other = await pool.acquire({ accountId: mia.id, workspace: dir, scope: 'thread:t2' })
+    expect(new Set([own.machineId, thread.machineId, other.machineId]).size).toBe(3)
+    expect((await pool.row(thread.machineId))?.scope).toBe('thread:t1')
+    // Each box mounts the same folder.
+    expect([...machines.boxes.values()].map(box => box.spec.hostWorkspace)).toEqual([dir, dir, dir])
+    for (const lease of [own, thread, other]) lease.release()
+    await pool.stopScope({ accountId: mia.id, workspace: dir, scope: 'thread:t1' })
+    expect((await pool.list()).map(row => row.scope).sort()).toEqual(['', 'thread:t2'])
+  })
+
+  it('lets a thread\'s box pause while its agent waits, and resumes it on the next call', async () => {
+    const pool = await openPool({ idlePauseMs: 10 })
+    const link = await pool.leasedLink({ accountId: mia.id, workspace: dir, scope: 'thread:t1', idleMs: 10 })
+    const machineId = (await pool.list())[0]?.id ?? ''
+    expect(link.capabilities.platform).toBe('linux')
+    let heard = 0
+    link.onClose(() => { heard += 1 })
+    await expect(link.call('fs/stat', { workspaceId: 'ws_box', path: '/workspace' })).rejects.toThrow('answered')
+    // No calls: the lease goes, then the pool pauses the box (and its daemon link closes).
+    await expect.poll(async () => (await pool.row(machineId))?.state, { timeout: 2_000 }).toBe('paused')
+    expect(link.leased).toBe(false)
+    expect(heard).toBe(1)
+    const before = linkCalls.length
+    await expect(link.call('fs/stat', { workspaceId: 'ws_box', path: '/workspace' })).rejects.toThrow('answered')
+    expect((await pool.row(machineId))?.state).toBe('running')
+    // The second call ran on the resumed box's new connection, not the closed one.
+    const [first, second] = [linkCalls[before - 1]?.split(' ')[0], linkCalls[before]?.split(' ')[0]]
+    expect(second).not.toBe(first)
+    link.close()
+    expect(link.closed).toBe(true)
+    await expect(link.call('fs/stat', { workspaceId: 'ws_box', path: '/workspace' })).rejects.toThrow(/closed/)
   })
 })
 
