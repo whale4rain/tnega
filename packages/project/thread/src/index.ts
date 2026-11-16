@@ -1,5 +1,6 @@
 import type { LiveAgent } from '@tnega/agent'
 import { Service, type Context } from '@tnega/core'
+import type { SessionBackend } from '@tnega/session'
 
 declare module '@tnega/core' {
   interface ServiceMap {
@@ -263,8 +264,11 @@ export abstract class ThreadService extends Service {
   /** 等到该 Thread 当前的工作安静下来；没有在跑的工作时立即返回。 */
   abstract idle(threadId: string): Promise<void>
 
-  /** 该 Thread 的 Session 文件路径；UI 与调试用。 */
-  abstract sessionFile(threadId: string): string
+  /**
+   * 该 Thread 的 Session 存在哪里：本机是 JSONL 文件路径，服务器上是会话存储给的 backend。
+   * 只读查看（UI、用量）用它打开日志，不激活 Agent。
+   */
+  abstract sessionLog(threadId: string): string | SessionBackend
 
   protected abstract runSpawn(request: ThreadSpawnRequest): Promise<ThreadRecord>
 

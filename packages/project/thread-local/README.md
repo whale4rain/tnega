@@ -12,6 +12,13 @@
 `<sessionRoot>/agents/<threadId>/session.jsonl`。未传时保持上述默认位置；
 `root` 仍负责原有身份目录，其余项目文件与工作目录不受影响。此选项不自动迁移旧历史。
 
+组合层也可传入 `sessionLog(threadId)`，返回会话存储的 `SessionBackend`：服务器用
+Postgres 存储时（`TNEGA_SESSION_STORE=postgres`），Thread 的历史是数据库里的行，
+不再是服务器磁盘上的文件。一个 Project 的 Thread 放在存储里自己的工作区
+`<workspace>/.tnega/projects/<projectId>` 下，不会出现在该文件夹的 Session 列表里；
+删除 Project 时一并删除。`ctx.threads.sessionLog(threadId)` 返回文件路径或该
+backend，只读查看（界面、用量）用它打开日志。
+
 ## Git 工作目录与交付
 
 CLI Host 在 Git Workspace 中为每个执行 Thread 建立独立 worktree 和

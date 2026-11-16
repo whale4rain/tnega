@@ -777,11 +777,11 @@ export class ProjectLoopRuntime {
   private async readSession(threadId: string): Promise<readonly SessionEvent[]> {
     const live = this.registry.get(threadId)
     if (live) return await live.session.read()
-    const file = this.threads.sessionFile(threadId)
-    if (!await fileExists(file)) return []
+    const target = this.threads.sessionLog(threadId)
+    if (typeof target === 'string' && !await fileExists(target)) return []
     let log: SessionLog | undefined
     try {
-      log = new SessionLog(file)
+      log = typeof target === 'string' ? new SessionLog(target) : SessionLog.readOnly(target)
       await log.init()
       return await log.read()
     } catch {

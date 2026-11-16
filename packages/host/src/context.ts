@@ -81,4 +81,9 @@ export interface ServerContext {
   web: WebServerService
   /** Where Sessions are listed, read and changed (`ctx.sessionStore` on the host root). */
   sessions: SessionStore
+  /**
+   * Where Project Thread Sessions live when not in files: the server's
+   * Postgres store. Unset in local mode, where they stay JSONL files.
+   */
+  projectThreadLogs?: SessionStore
 }

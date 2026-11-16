@@ -194,6 +194,8 @@ export async function startWebServer(
     secrets: secretVault.vault,
     web,
     sessions: root.get('sessionStore'),
+    // On Postgres, Project Thread logs are rows too, not files on the server's disk.
+    ...(state.sessions.kind === 'postgres' ? { projectThreadLogs: root.get('sessionStore') } : {}),
   }
 
   // Files, terminals, browser view and setup hints act on this machine: the
