@@ -366,6 +366,12 @@ effect with key `routine_id:<run time>`, so a routine cannot run twice for the
 same time. This removes today's limit that routines run
 only while their project is open.
 
+Built in M4 (`packages/control/effects{,-pg}`): the `schedule` row is keyed
+by `(kind, key)` instead of `(project_id, routine_id)`, so routines are one
+kind (`routine`, key `<projectId>/<routineId>`). A project mirrors its
+routines when it opens and on every routine change; a routine made before
+the server had this table is mirrored the first time its project opens.
+
 ### 4.6 Identity and secrets
 
 - MVP: one owner account created by `tnega server init`, which prints a pairing

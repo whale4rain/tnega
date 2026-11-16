@@ -4,6 +4,7 @@ import { accountsPg } from '@tnega/accounts-pg'
 import { accountsRoutes } from '@tnega/accounts-routes'
 import { serverAdmin } from '@tnega/server-admin'
 import { blobsLocal } from '@tnega/blobs-local'
+import { effectsPg } from '@tnega/effects-pg'
 import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { LOCAL_ACCOUNT_ID, ownedLocalWorkspaces, sessionStorePg } from '@tnega/session-store-pg'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
@@ -73,6 +74,20 @@ export const stateCapability: Plugin = {
       })
     }
     else await ctx.plugin(sessionStoreJsonl)
+  },
+}
+
+/**
+ * Control seam of a host whose state is on Postgres: `ctx.effects`, the
+ * effects queue and schedules in the same database, with its loop (v2 server
+ * MVP §4.2, §4.5). A host with file state mounts nothing: its routines tick
+ * while their project is open.
+ */
+export const controlCapability: Plugin = {
+  name: 'capability:control',
+  async apply(ctx: Context, spec: StateCapabilitySpec) {
+    if (spec.sessions.kind !== 'postgres') return
+    await ctx.plugin(effectsPg, { url: spec.sessions.url })
   },
 }
 
