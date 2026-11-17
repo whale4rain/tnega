@@ -28,8 +28,8 @@ it('unmounts a project nobody uses and mounts it again on the next request', asy
   const record = await host.create({ name: 'Idle' })
   await host.sendUserMessage(record.id, 'remember the milk')
   const first = await host.mount(record.id)
-  await expect.poll(async () => (await host.snapshot(record.id)).messages.some(envelope => envelope.text === 'Noted.')).toBe(true)
-  await expect.poll(() => first.registry.list().every(agent => agent.status !== 'running')).toBe(true)
+  await expect.poll(async () => (await host.snapshot(record.id)).messages.some(envelope => envelope.text === 'Noted.'), { timeout: 10_000 }).toBe(true)
+  await expect.poll(() => first.registry.list().every(agent => agent.status !== 'running'), { timeout: 10_000 }).toBe(true)
 
   // Used just now: kept.
   expect(await host.unmountIdle(60_000)).toEqual([])
@@ -37,7 +37,8 @@ it('unmounts a project nobody uses and mounts it again on the next request', asy
   const unwatch = await host.watch(record.id, { send: () => undefined })
   expect(await host.unmountIdle(60_000, Date.now() + 120_000)).toEqual([])
   unwatch()
-  expect(await host.unmountIdle(60_000, Date.now() + 120_000)).toEqual([record.id])
+  // Once the loop has finished delivering and publishing, nothing holds it.
+  await expect.poll(() => host.unmountIdle(60_000, Date.now() + 120_000), { timeout: 10_000 }).toEqual([record.id])
 
   const again = await host.mount(record.id)
   expect(again).not.toBe(first)

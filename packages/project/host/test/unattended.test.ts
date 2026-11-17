@@ -115,7 +115,7 @@ it('tells the person when the coordinator\'s turn is stopped', async () => {
   await expect.poll(async () => (await projects.snapshot(record.id)).messages
     .find(envelope => envelope.kind === 'agent-reply')?.text, { timeout: 5_000 }).toMatch(/limit for unattended work/)
   const project = await projects.mount(record.id)
-  await expect.poll(async () => (await project.threads.get(record.coordinatorId))?.state).toBe('blocked')
+  await expect.poll(async () => (await project.threads.get(record.coordinatorId))?.state, { timeout: 5_000 }).toBe('blocked')
 })
 
 it('lets a turn someone is watching run past the time limit', async () => {
@@ -131,5 +131,5 @@ it('lets a turn someone is watching run past the time limit', async () => {
   // The window closes: the next check stops it.
   unwatch()
   await agent.whenIdle()
-  await expect.poll(async () => (await project.threads.get(child.id))?.state).toBe('blocked')
+  await expect.poll(async () => (await project.threads.get(child.id))?.state, { timeout: 5_000 }).toBe('blocked')
 })

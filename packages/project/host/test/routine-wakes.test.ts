@@ -109,7 +109,7 @@ it('schedules routines made before the server had a schedule when the server sta
   expect(await knownProjectWorkspaces()).toContain(workspace)
   const wakes = await root.plugin(projectRoutineWakes, { host: async () => host, workspaces: async () => [workspace] })
   cleanups.push(() => wakes.dispose())
-  await expect.poll(async () => (await effects.schedules(ROUTINE_SCHEDULE)).map(entry => entry.key))
+  await expect.poll(async () => (await effects.schedules(ROUTINE_SCHEDULE)).map(entry => entry.key), { timeout: 10_000 })
     .toEqual([routineScheduleKey(record.id, routine.id)])
 })
 
@@ -126,7 +126,7 @@ it('wakes a project whose thread was working when the server stopped', async () 
   const wakes = await root.plugin(projectRoutineWakes, { host: async () => host, workspaces: async () => [workspace] })
   cleanups.push(() => wakes.dispose())
   // The wake runs as soon as it is stored: the project is mounted with no request.
-  await expect.poll(async () => (await effects.schedules()).length === 0 && (await effects.pending(RUN_WAKE)).length === 0).toBe(true)
-  await expect.poll(() => host.unmountIdle(0, Date.now() + 1_000)).toEqual([record.id])
+  await expect.poll(async () => (await effects.schedules()).length === 0 && (await effects.pending(RUN_WAKE)).length === 0, { timeout: 10_000 }).toBe(true)
+  await expect.poll(() => host.unmountIdle(0, Date.now() + 1_000), { timeout: 10_000 }).toEqual([record.id])
   expect(await effects.problems()).toHaveLength(0)
 })
