@@ -201,6 +201,25 @@ export interface ResolvedCredential {
   headers: Record<string, string>
 }
 
+/** The remembered secret that, with no credential of the environment's own for GitHub, lets a box push and open pull requests. */
+export const GITHUB_TOKEN_SECRET = 'GITHUB_TOKEN'
+
+/** The hosts a GitHub token is sent to, and how: git over HTTPS takes Basic, the API takes a bearer token. */
+export const GITHUB_HOSTS: readonly string[] = ['github.com', 'api.github.com']
+
+/**
+ * The keys for GitHub from a token: `git push` to github.com and `gh` against
+ * api.github.com work in the box without the token ever entering it.
+ */
+export function githubCredentials(token: string): ResolvedCredential[] {
+  if (!token || /[\r\n]/u.test(token)) return []
+  const basic = Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64')
+  return [
+    { host: 'github.com', headers: { authorization: `Basic ${basic}` } },
+    { host: 'api.github.com', headers: { authorization: `Bearer ${token}` } },
+  ]
+}
+
 /**
  * The egress proxy's keys for an environment, with each `${NAME}` filled from
  * the user's secrets. A credential naming a secret the user has not given is

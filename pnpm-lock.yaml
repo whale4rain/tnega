@@ -2070,6 +2070,9 @@ importers:
       '@tnega/egress-proxy':
         specifier: workspace:*
         version: link:../machine/egress-proxy
+      '@tnega/environment':
+        specifier: workspace:*
+        version: link:../machine/environment
       '@tnega/execution-sandbox':
         specifier: workspace:*
         version: link:../sandbox/execution-sandbox

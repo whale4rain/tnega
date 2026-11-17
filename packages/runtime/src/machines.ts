@@ -6,6 +6,8 @@ import type { Context, Plugin } from '@tnega/core'
 import { daemonGateway } from '@tnega/daemon-gateway'
 import { daemons } from '@tnega/daemons'
 import { createRootCertificate, type KeyPairPem } from '@tnega/egress-proxy'
+/** The remembered secret the egress proxy sends to GitHub for a box, and a server reads pull request states with. */
+export { GITHUB_TOKEN_SECRET } from '@tnega/environment'
 import { machineE2B, type E2BMachineConfig } from '@tnega/machine-e2b'
 import { machineGvisor, type GvisorMachineConfig } from '@tnega/machine-gvisor'
 import { machinePool, type MachineLease, type MachinePoolConfig } from '@tnega/machine-pool'

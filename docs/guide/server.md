@@ -253,6 +253,18 @@ How it fits together:
   themselves.
 - No secret values reach a box: keys the egress proxy adds stay with the
   proxy, and every other remembered secret is withheld from commands.
+- **GitHub.** Save a `GITHUB_TOKEN` secret (remembered) for the folder. The
+  egress proxy then sends it to `github.com` (for `git push`) and
+  `api.github.com`, unless the folder's `.tnega/environment.toml` sets keys for
+  those hosts itself. Project threads open and check their pull requests
+  through GitHub's API from the server with the same key, so a box needs no
+  `gh`. The server never uses its own `gh` login for members. A box that was
+  paused reads its keys again when it resumes.
+- A project thread's branch is checked out in a box under
+  `.tnega/worktrees/<thread>` in the folder. The checkout is locked, so `git
+  worktree prune` on the host leaves it alone. Deleting the project removes
+  these checkouts. It also removes their branches, unless a branch has commits
+  that are not on a remote branch or on the folder's HEAD.
 - Not in a box yet: subagents and a coding session's MCP servers. A run in a
   box goes without them for now.
 

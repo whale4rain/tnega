@@ -49,7 +49,7 @@ import type { BuiltinToolsConfig, MachineSpec } from '@tnega/runtime'
 import { limitUnattendedTurns, type UnattendedLimits } from './unattended-limits.js'
 import { describeToolCall } from './project-activity.js'
 import { mountProjectMemory } from '@tnega/project-memory'
-import { ProjectWorktrees, PullRequestStates, type ProjectGitCommand, gitResourceData, gitResourceId, trackGitOutcomes, type ProjectPullRequest, type PullRequestLookup } from '@tnega/project-worktrees'
+import { ProjectWorktrees, PullRequestStates, discardThreadWorktrees, threadBranch, type ProjectGitCommand, type PullRequestForge, gitResourceData, gitResourceId, trackGitOutcomes, type ProjectPullRequest, type PullRequestLookup } from '@tnega/project-worktrees'
 import { projectClock } from './clock.js'
 import { projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 
@@ -73,6 +73,8 @@ export interface ProjectHostOptions {
   maxChildren?: number
   /** Where pull requests stand now; defaults to asking the GitHub CLI. */
   pullRequestLookup?: PullRequestLookup
+  /** Where threads open and check their pull requests; defaults to `gh` where the checkout is. */
+  pullRequestForge?: PullRequestForge
   /**
    * Keep each Thread's Session in this store (Postgres on a server) instead of
    * a JSONL file under the tnega home. A project's threads are one store
@@ -488,11 +490,17 @@ export class ProjectHost {
     await this.unmounting.get(id)?.catch(() => undefined)
     if (mounted) await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
     this.idleSummaries.delete(id)
+    const threadIds = await this.threadIds(id).catch(() => [])
     const machines = this.options.threadMachines
-    if (machines) {
-      const threadIds = await this.threadIds(id).catch(() => [])
-      await machines.forget(threadIds)
-    }
+    if (machines) await machines.forget(threadIds)
+    // Thread checkouts (on this host, or made in a box inside this folder) and their branches,
+    // unless a branch holds commits found nowhere else.
+    await discardThreadWorktrees({
+      root: this.workspace,
+      threadIds,
+      checkoutRoots: [join(this.tnegaRoot, 'worktrees'), join(this.workspace, '.tnega', 'worktrees')],
+      branch: threadId => threadBranch(id, threadId),
+    }).catch(() => undefined)
     const effects = this.options.effects
     if (effects) {
       for (const entry of await effects.schedules(ROUTINE_SCHEDULE)) {
@@ -970,7 +978,8 @@ export class ProjectHost {
     if (this.options.builtinTools !== false) await installBuiltinSkills()
     const skillsPrompt = this.options.builtinTools !== false ? await renderSkillIndex(this.workspace) : ''
     const maxDepth = this.options.maxDepth ?? DEFAULT_THREAD_LIMITS.maxDepth
-    const hostWorktrees = new ProjectWorktrees(this.workspace, directory, record.id, undefined, join(this.tnegaRoot, 'worktrees'))
+    const forge = this.options.pullRequestForge
+    const hostWorktrees = new ProjectWorktrees(this.workspace, directory, record.id, undefined, join(this.tnegaRoot, 'worktrees'), forge ? { forge } : {})
     // A thread in a box has its box from before its Agent exists: its branch is made in the box.
     const boxes = new Map<string, Promise<ThreadBox | undefined>>()
     const boxFor = (thread: ThreadRecord): Promise<ThreadBox | undefined> => {
@@ -996,7 +1005,7 @@ export class ProjectHost {
     const worktreesFor = async (thread: ThreadRecord): Promise<ProjectWorktrees> => {
       const box = await boxFor(thread)
       if (!box) return hostWorktrees
-      return new ProjectWorktrees(box.cwd, directory, record.id, box.run, posix.join(box.cwd, '.tnega', 'worktrees'), { remote: true })
+      return new ProjectWorktrees(box.cwd, directory, record.id, box.run, posix.join(box.cwd, '.tnega', 'worktrees'), { remote: true, ...(forge ? { forge } : {}) })
     }
     await ctx.plugin(threadLocal, {
       // Each Agent sees only its role's tools: smaller requests, and the

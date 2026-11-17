@@ -222,6 +222,32 @@ describe('machine pool', () => {
   })
 })
 
+describe('machine pool keys', () => {
+  it('sends a remembered GITHUB_TOKEN to GitHub through the proxy, and reads keys again on resume', async () => {
+    const root = createRootCertificate()
+    const secrets: Record<string, string> = {}
+    const pool = await openPool({
+      egress: { listen: { host: '127.0.0.1', port: 0 }, advertise: '10.0.0.5', root, allow: ['registry.npmjs.org'] },
+      rememberedSecrets: async () => ({ ...secrets }),
+    })
+    const lease = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const spec = [...machines.boxes.values()][0]?.spec
+    if (spec?.network.mode !== 'egress') throw new Error('expected an egress box')
+    expect(spec.env?.GIT_TERMINAL_PROMPT).toBe('0')
+    expect(pool.egressPolicy(spec.network.egress.token)?.credentials).toEqual([])
+    lease.release()
+    await pool.pause(lease.machineId)
+
+    secrets.GITHUB_TOKEN = 'ghp_example'
+    const again = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const credentials = pool.egressPolicy(spec.network.egress.token)?.credentials ?? []
+    expect(credentials.map(credential => credential.host)).toEqual(['github.com', 'api.github.com'])
+    expect(credentials[0]?.headers.authorization).toBe(`Basic ${Buffer.from('x-access-token:ghp_example').toString('base64')}`)
+    expect(credentials[1]?.headers.authorization).toBe('Bearer ghp_example')
+    again.release()
+  })
+})
+
 describe('machine pool scopes', () => {
   it('gives each Project thread of a workspace its own box', async () => {
     const pool = await openPool()

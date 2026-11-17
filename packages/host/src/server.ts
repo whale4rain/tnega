@@ -1,5 +1,5 @@
-import { accountsCapability, BOX_WORKSPACE, boxLinkMachine, boxMachine, controlCapability, memberLoginOf, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
-import { hasProjectState, knownProjectWorkspaces, projectRoutineWakes } from '@tnega/project-host'
+import { accountsCapability, BOX_WORKSPACE, GITHUB_TOKEN_SECRET, boxLinkMachine, boxMachine, controlCapability, memberLoginOf, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
+import { githubApiForge, githubApiLookup, hasProjectState, knownProjectWorkspaces, projectRoutineWakes } from '@tnega/project-host'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { isAbsolute, join, relative, resolve } from 'node:path'
@@ -24,7 +24,7 @@ import { chatgptRoutes } from '@tnega/auth-chatgpt'
 import { usageRoutes } from '@tnega/usage'
 import { contextInsightsRoutes } from '@tnega/context-insights'
 import { sideChatRoutes, type SideChatModelRequest } from '@tnega/side-chat'
-import { secretRoutes } from '@tnega/secrets-local'
+import { secretRoutes, type SecretVault } from '@tnega/secrets-local'
 import { workspacePromptRoutes } from '@tnega/workspace-prompt'
 import { pluginRoutes } from '@tnega/plugin-host'
 import { projectApi } from '@tnega/project-http'
@@ -96,6 +96,11 @@ export interface WebServerOptions {
    * turns it on when the host passes nothing.
    */
   pluginDev?: string | boolean
+}
+
+/** A folder's remembered GitHub key, read when needed so a key saved later counts. */
+function githubToken(vault: SecretVault, workspace: string): () => Promise<string | undefined> {
+  return async () => (await vault.remembered(workspace))[GITHUB_TOKEN_SECRET]
 }
 
 /**
@@ -226,15 +231,21 @@ export async function startWebServer(
     const listen = options.machines?.gatewayListen
     await root.plugin(daemonDoorCapability, listen ? { listen } : {})
   }
-  if (options.machines) await root.plugin(machinesCapability, options.machines)
   // Image bytes under the tnega home; Sessions in JSONL files there, or on
   // Postgres when TNEGA_SESSION_STORE=postgres and DATABASE_URL say so.
   const state = options.state ?? stateSpecFromEnv()
+  // Remembered secrets go with the state: sealed in Postgres with a master key, else the owner-only file.
+  const secretVault = await openSecretVault(state)
+  if (options.machines) {
+    // The egress proxy adds a box's keys from its folder's remembered secrets (GITHUB_TOKEN included).
+    await root.plugin(machinesCapability, {
+      ...options.machines,
+      pool: { rememberedSecrets: (workspace: string) => secretVault.vault.remembered(workspace), ...options.machines.pool },
+    })
+  }
   await root.plugin(stateCapability, state)
   // Effects and schedules live with the state: on Postgres, routines run with no window open.
   await root.plugin(controlCapability, state)
-  // Remembered secrets go with the state: sealed in Postgres with a master key, else the owner-only file.
-  const secretVault = await openSecretVault(state)
   // One session index per host, in the tnega home; it opens on the first search.
   const sessionIndex = new SqliteSessionIndex({ sessions: root.get('sessionStore') })
   const web = root.get('webServer')
@@ -257,6 +268,12 @@ export async function startWebServer(
     ...(options.machines && options.accounts ? { projectThreadMachines: threadBoxes(root, options.accounts.membersRoot) } : {}),
     // Nobody watches a server's Project threads and routines: their turns have limits.
     ...(options.accounts ? { unattended: {} } : {}),
+    // Pull request states come from GitHub's API with the member's GITHUB_TOKEN, never the server's own gh login.
+    // Threads open them the same way, so a box needs only git (its push gets the key from the egress proxy).
+    ...(options.accounts ? {
+      pullRequestLookup: (workspace: string) => githubApiLookup({ token: githubToken(secretVault.vault, workspace) }),
+      pullRequestForge: (workspace: string) => githubApiForge({ token: githubToken(secretVault.vault, workspace) }),
+    } : {}),
     ...(options.ptcRuntime ? { ptcRuntime: options.ptcRuntime } : {}),
     ...(configFile ? { configFile } : {}),
     ...(browser ? { browser } : {}),
