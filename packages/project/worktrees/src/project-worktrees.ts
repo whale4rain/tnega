@@ -168,6 +168,8 @@ export async function discardThreadWorktrees(input: {
   /** The folders the checkouts live in on this host. */
   checkoutRoots: readonly string[]
   branch: (threadId: string) => string
+  /** Where threads' own clones are (`<root>/<threadId>`): their branches are fetched back before the clones go. */
+  clones?: string
   command?: ProjectGitCommand
 }): Promise<DiscardedWorktrees> {
   const run = input.command ?? runCommand
@@ -189,6 +191,14 @@ export async function discardThreadWorktrees(input: {
     result.worktrees.push(id)
   }
   for (const id of ids) {
+    const clone = input.clones ? join(input.clones, id) : undefined
+    if (clone) {
+      // Work a thread committed in its own clone comes back to the folder's repository first,
+      // so the rule below decides about it like any other branch.
+      const branch = input.branch(id)
+      await run('git', ['fetch', '--quiet', clone, `+refs/heads/${branch}:refs/heads/${branch}`], input.root).catch(() => '')
+      await rm(clone, { recursive: true, force: true })
+    }
     for (const root of input.checkoutRoots) await rm(join(root, id), { recursive: true, force: true })
   }
   await run('git', ['worktree', 'prune'], input.root).catch(() => '')

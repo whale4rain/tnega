@@ -49,7 +49,7 @@ import type { BuiltinToolsConfig, MachineSpec } from '@tnega/runtime'
 import { limitUnattendedTurns, type UnattendedLimits } from './unattended-limits.js'
 import { describeToolCall } from './project-activity.js'
 import { mountProjectMemory } from '@tnega/project-memory'
-import { ProjectWorktrees, PullRequestStates, discardThreadWorktrees, threadBranch, type ProjectGitCommand, type PullRequestForge, gitResourceData, gitResourceId, trackGitOutcomes, type ProjectPullRequest, type PullRequestLookup } from '@tnega/project-worktrees'
+import { ProjectWorktrees, PullRequestStates, discardThreadWorktrees, threadBranch, threadClonesRoot, type ProjectGitCommand, type PullRequestForge, gitResourceData, gitResourceId, trackGitOutcomes, type ProjectPullRequest, type PullRequestLookup } from '@tnega/project-worktrees'
 import { projectClock } from './clock.js'
 import { projectAgentRole, projectToolGuard, scopeAgentTools, type ProjectAgentRole } from './project-tool-scope.js'
 
@@ -493,13 +493,14 @@ export class ProjectHost {
     const threadIds = await this.threadIds(id).catch(() => [])
     const machines = this.options.threadMachines
     if (machines) await machines.forget(threadIds)
-    // Thread checkouts (on this host, or made in a box inside this folder) and their branches,
-    // unless a branch holds commits found nowhere else.
+    // Thread checkouts and clones (on this host, or a box's own clone inside this folder) and their
+    // branches, unless a branch holds commits found nowhere else.
     await discardThreadWorktrees({
       root: this.workspace,
       threadIds,
       checkoutRoots: [join(this.tnegaRoot, 'worktrees'), join(this.workspace, '.tnega', 'worktrees')],
       branch: threadId => threadBranch(id, threadId),
+      clones: threadClonesRoot(this.workspace),
     }).catch(() => undefined)
     const effects = this.options.effects
     if (effects) {

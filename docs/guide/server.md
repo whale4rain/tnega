@@ -260,11 +260,16 @@ How it fits together:
   through GitHub's API from the server with the same key, so a box needs no
   `gh`. The server never uses its own `gh` login for members. A box that was
   paused reads its keys again when it resumes.
-- A project thread's branch is checked out in a box under
-  `.tnega/worktrees/<thread>` in the folder. The checkout is locked, so `git
-  worktree prune` on the host leaves it alone. Deleting the project removes
-  these checkouts. It also removes their branches, unless a branch has commits
-  that are not on a remote branch or on the folder's HEAD.
+- **Each project thread has its own clone.** Its box mounts
+  `.tnega/clones/<thread>` in the folder. This is a local clone of the
+  folder's repository at its HEAD, with `origin` set to the folder's own
+  `origin`. The box never mounts the folder itself, so threads do not see each
+  other's files or the folder's uncommitted ones. They share work through pull
+  requests and the project's artifacts. A folder that is not in a git
+  repository is mounted as it is. Deleting the project first fetches each
+  thread's branch back into the folder's repository, then removes the clones.
+  It also removes those branches, unless a branch has commits that are not on
+  a remote branch or on the folder's HEAD.
 - Not in a box yet: subagents and a coding session's MCP servers. A run in a
   box goes without them for now.
 

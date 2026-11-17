@@ -1,5 +1,5 @@
 import { accountsCapability, BOX_WORKSPACE, GITHUB_TOKEN_SECRET, boxLinkMachine, boxMachine, controlCapability, memberLoginOf, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
-import { githubApiForge, githubApiLookup, hasProjectState, knownProjectWorkspaces, projectRoutineWakes } from '@tnega/project-host'
+import { githubApiForge, githubApiLookup, hasProjectState, prepareThreadClone, threadCloneDir, threadCloneOwner, knownProjectWorkspaces, projectRoutineWakes } from '@tnega/project-host'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { isAbsolute, join, relative, resolve } from 'node:path'
@@ -139,14 +139,17 @@ function threadBoxes(root: Context, membersRoot: string): NonNullable<ServerCont
       open: async thread => {
         const accountId = await accountOf()
         if (!accountId) return undefined
-        const link = await pool.leasedLink({ accountId, workspace, scope: `thread:${thread.id}` })
+        // The box mounts the thread's own clone, never the member's folder: threads share work
+        // through pull requests and artifacts, not files. A folder outside git is mounted as it is.
+        const folder = await prepareThreadClone(workspace, thread.id) ?? workspace
+        const link = await pool.leasedLink({ accountId, workspace: folder, scope: `thread:${thread.id}` })
         const workspaceId = link.workspaces.find(entry => entry.path === BOX_WORKSPACE)?.id ?? link.workspaces[0]?.id
         if (!workspaceId) {
           link.close()
           throw new Error(`the box for thread ${thread.id} serves no workspace`)
         }
         return {
-          machine: boxLinkMachine(link, workspace),
+          machine: boxLinkMachine(link, folder),
           cwd: BOX_WORKSPACE,
           close: () => link.close(),
           // git and gh for the thread's branch run in its box: the box is the sandbox, keys come from the egress proxy.
@@ -163,7 +166,11 @@ function threadBoxes(root: Context, membersRoot: string): NonNullable<ServerCont
       forget: async threadIds => {
         const accountId = await accountOf()
         if (!accountId) return
-        for (const id of threadIds) await pool.stopScope({ accountId, workspace, scope: `thread:${id}` })
+        for (const id of threadIds) {
+          // Its clone's box, and a box from before clones that mounted the folder.
+          await pool.stopScope({ accountId, workspace: threadCloneDir(workspace, id), scope: `thread:${id}` })
+          await pool.stopScope({ accountId, workspace, scope: `thread:${id}` })
+        }
       },
     }
   }
@@ -240,7 +247,7 @@ export async function startWebServer(
     // The egress proxy adds a box's keys from its folder's remembered secrets (GITHUB_TOKEN included).
     await root.plugin(machinesCapability, {
       ...options.machines,
-      pool: { rememberedSecrets: (workspace: string) => secretVault.vault.remembered(workspace), ...options.machines.pool },
+      pool: { rememberedSecrets: (workspace: string) => secretVault.vault.remembered(threadCloneOwner(workspace) ?? workspace), ...options.machines.pool },
     })
   }
   await root.plugin(stateCapability, state)
