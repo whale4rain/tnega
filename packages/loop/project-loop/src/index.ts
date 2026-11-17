@@ -264,6 +264,8 @@ export class ProjectLoopRuntime {
   private timer: ReturnType<typeof setTimeout> | undefined
   private sweeper: ReturnType<typeof setInterval> | undefined
   private disposed = false
+  /** Work started outside the scan chain; dispose waits for it so nothing writes after the scope is gone. */
+  private readonly inFlight = new Set<Promise<unknown>>()
 
   constructor(private readonly ctx: Context, config: ProjectLoopConfig) {
     if (!config?.projectId || typeof config.projectId !== 'string') {
@@ -307,7 +309,7 @@ export class ProjectLoopRuntime {
     this.ctx.on('project/resumed', (event: { projectId: string }) => {
       if (event.projectId !== this.projectId) return
       // Threads a crash cut off while the Project was paused continue now.
-      void this.recoverInterrupted().catch(error => this.fail(error))
+      this.track(this.recoverInterrupted().catch(error => this.fail(error)))
       this.schedule()
     })
     for (const agent of this.registry.list()) this.attach(agent.id, agent)
@@ -317,7 +319,7 @@ export class ProjectLoopRuntime {
       this.sweeper = setInterval(() => this.schedule(), interval)
       this.sweeper.unref?.()
     }
-    if (options.recover !== false) void this.recover()
+    if (options.recover !== false) this.track(this.recover().catch(error => this.fail(error)))
     this.schedule()
   }
 
@@ -369,12 +371,23 @@ export class ProjectLoopRuntime {
     })
   }
 
-  dispose(): void {
+  /** Stop, then wait for the scan, status writes and publishing under way. */
+  async dispose(): Promise<void> {
     this.disposed = true
     if (this.timer) clearTimeout(this.timer)
     if (this.sweeper) clearInterval(this.sweeper)
     this.timer = undefined
     this.sweeper = undefined
+    while (this.running || this.inFlight.size) {
+      await Promise.allSettled([this.running, this.statusTail, ...this.inFlight])
+    }
+    await this.statusTail.catch(() => undefined)
+  }
+
+  private track(work: Promise<unknown>): void {
+    const settled = work.catch(() => undefined)
+    this.inFlight.add(settled)
+    void settled.finally(() => this.inFlight.delete(settled))
   }
 
   /** 把某个 Agent 的 Session 事件接到发布路径上；随该 Agent 的作用域一起卸载。 */
@@ -386,8 +399,8 @@ export class ProjectLoopRuntime {
         this.reported.delete(agentId)
         this.queueStatus(agentId, 'running')
       }
-      if (event.type === 'turn/end') void this.queueTurnEnd(agentId, event)
-      void this.onSessionEvent(agentId, event).catch(error => this.fail(error))
+      if (event.type === 'turn/end') this.track(this.queueTurnEnd(agentId, event))
+      this.track(this.onSessionEvent(agentId, event).catch(error => this.fail(error)))
     })
   }
 

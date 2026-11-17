@@ -1,8 +1,8 @@
 import { installBuiltinSkills, renderSkillIndex } from '@tnega/coding-agent'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
-import { join, posix, resolve } from 'node:path'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { dirname, join, posix, resolve } from 'node:path'
 import { agents, continuationNudge, type AgentRegistry, type LiveAgent, type LLMAdapter } from '@tnega/agent'
 import { artifactLocal } from '@tnega/artifact-local'
 import type { ArtifactStore } from '@tnega/artifact-store'
@@ -19,7 +19,7 @@ import { boxBlackboard } from '@tnega/box-blackboard'
 import { Context } from '@tnega/core'
 import { runSummary } from '@tnega/run-summary'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
-import { projectSessionRoot, workspaceProjectStateRoot } from '@tnega/home'
+import { projectSessionRoot, resolveTnegaHome, workspaceProjectStateRoot, workspaceStateDir, workspaceStorageKey } from '@tnega/home'
 import { toolPtc } from '@tnega/tool-ptc'
 import { jobsLocal } from '@tnega/jobs-local'
 import { toolJobs } from '@tnega/tool-jobs'
@@ -34,7 +34,7 @@ import { SessionLog, foldUsage, type SessionBackend, type SessionEvent } from '@
 import type { SessionStore } from '@tnega/session-store'
 import type { EffectService } from '@tnega/effects'
 import { RoutineRunner, registerRoutineTools, type RoutineData } from '@tnega/project-routines'
-import { ROUTINE_SCHEDULE, routineScheduleKey } from './routine-wakes.js'
+import { ROUTINE_SCHEDULE, RUN_WAKE, routineScheduleKey } from './routine-wakes.js'
 import { foldApprovalMode } from '@tnega/approval-review'
 
 /** How many of the user's latest room messages a thread's reviewer reads as authorization. */
@@ -94,6 +94,13 @@ export interface ProjectHostOptions {
   threadMachines?: ThreadMachines
   /** Limits for turns nobody watches; a server sets them. */
   unattended?: UnattendedLimits
+  /**
+   * Unmount a project after this long with nobody watching it, no Agent
+   * running, no approval waiting and nothing queued for its threads (v2
+   * server MVP §4.7: the in-memory runtime unloads when idle). The next
+   * request or wake mounts it again. Unset keeps projects mounted.
+   */
+  idleUnmountMs?: number
 }
 
 /** A Project thread's box, as the composition layer opens it. */
@@ -112,6 +119,41 @@ export interface ThreadMachines {
   open(thread: ThreadRecord): Promise<ThreadBox | undefined>
   /** Stop and forget the boxes of these threads (their project was deleted). */
   forget(threadIds: readonly string[]): Promise<void>
+}
+
+/** The note in a folder's state directory that names the folder, for {@link knownProjectWorkspaces}. */
+const WORKSPACE_NOTE = 'workspace.json'
+
+/**
+ * Folders whose projects a Project host has opened under this tnega home, so
+ * a server that starts can find them (folders opened before the note existed
+ * are found once opened again, or from the folders the caller lists).
+ */
+export async function knownProjectWorkspaces(): Promise<string[]> {
+  const root = dirname(workspaceStateDir(resolveTnegaHome()))
+  let entries: string[]
+  try {
+    entries = await readdir(root)
+  } catch {
+    return []
+  }
+  const found: string[] = []
+  for (const entry of entries) {
+    try {
+      const note: unknown = JSON.parse(await readFile(join(root, entry, WORKSPACE_NOTE), 'utf8'))
+      const path: unknown = typeof note === 'object' && note !== null ? Reflect.get(note, 'path') : undefined
+      // A note copied from another folder's directory does not count.
+      if (typeof path === 'string' && workspaceStorageKey(path) === entry) found.push(path)
+    } catch {
+      // No note: a folder from before notes, or not a project folder.
+    }
+  }
+  return found
+}
+
+/** Whether a folder has any project state under this tnega home. */
+export function hasProjectState(workspace: string): boolean {
+  return existsSync(join(workspaceStateDir(workspace), 'blackboard')) || existsSync(join(resolve(workspace), '.tnega', 'blackboard'))
 }
 
 /** The store workspace a project's Thread Sessions live under: beside the project's artifacts in the folder. */
@@ -280,6 +322,15 @@ export class ProjectHost {
   /** Summaries of projects that are not mounted: nothing changes them until they are. */
   private readonly idleSummaries = new Map<string, IdleStatus>()
   private readonly pullRequests: PullRequestStates
+  /** Projects being deleted: nothing mounts them again meanwhile. */
+  private readonly deleting = new Map<string, Promise<void>>()
+  /** Projects being unmounted for idleness: a mount waits for it, then mounts afresh. */
+  private readonly unmounting = new Map<string, Promise<void>>()
+  /** When each mounted project was last asked for. */
+  private readonly lastUsed = new Map<string, number>()
+  /** How many open watches each project has. */
+  private readonly watchers = new Map<string, number>()
+  private idleSweep: NodeJS.Timeout | undefined
   private indexScope: Promise<IndexScope> | undefined
 
   constructor(options: ProjectHostOptions) {
@@ -290,6 +341,59 @@ export class ProjectHost {
     this.pullRequests = new PullRequestStates(options.pullRequestLookup)
     this.workspace = resolve(options.workspace)
     this.tnegaRoot = workspaceProjectStateRoot(this.workspace)
+    const idle = options.idleUnmountMs
+    if (idle !== undefined && idle > 0) {
+      this.idleSweep = setInterval(() => { void this.unmountIdle(idle) }, Math.max(1_000, Math.min(60_000, Math.floor(idle / 2))))
+      this.idleSweep.unref()
+    }
+  }
+
+  /** Whether anyone has this project open in a window now. */
+  watched(projectId: string): boolean {
+    return (this.watchers.get(projectId) ?? 0) > 0
+  }
+
+  /**
+   * Unmount every project idle for at least `idleMs`: nobody watching, no
+   * Agent running, no approval waiting, nothing queued for a thread (unless
+   * the project is paused, which keeps its queue for later). Answers the ids
+   * it unmounted.
+   */
+  async unmountIdle(idleMs: number, now = Date.now()): Promise<string[]> {
+    const unmounted: string[] = []
+    for (const [id, mounting] of [...this.open]) {
+      if (this.unmounting.has(id) || this.deleting.has(id)) continue
+      if (now - (this.lastUsed.get(id) ?? now) < idleMs || this.watched(id)) continue
+      const project = await mounting.catch(() => undefined)
+      if (!project || this.open.get(id) !== mounting) continue
+      if (!await this.idle(project)) continue
+      if (this.open.get(id) !== mounting || this.watched(id)) continue
+      const unmounting = (async () => {
+        this.open.delete(id)
+        this.lastUsed.delete(id)
+        await project.ctx.fiber.dispose()
+      })()
+      this.unmounting.set(id, unmounting)
+      try {
+        await unmounting
+        unmounted.push(id)
+      } catch {
+        // A failed dispose leaves nothing mounted either; the next request mounts afresh.
+      } finally {
+        if (this.unmounting.get(id) === unmounting) this.unmounting.delete(id)
+      }
+    }
+    return unmounted
+  }
+
+  private async idle(project: OpenProject): Promise<boolean> {
+    if (project.registry.list().some(agent => agent.status === 'running')) return false
+    if (this.options.approvals.pendingFor(project.record.id)) return false
+    if (project.record.paused === true) return true
+    for (const thread of await project.threads.list()) {
+      if ((await project.box.inbox(agentAddress(thread.id))).length) return false
+    }
+    return true
   }
 
   /** 建 Project：只建身份与目录，不拉起 Agent。 */
@@ -358,12 +462,31 @@ export class ProjectHost {
     return await (await this.projects()).update(id, patch, author)
   }
 
+  /**
+   * Delete a project: stop its scope and wait for the work it still has in
+   * flight (replies being published, memory being extracted, schedule
+   * updates), then remove its records and folders. A request that arrives
+   * meanwhile finds no project instead of mounting it again.
+   */
   async delete(id: string, author = 'user'): Promise<void> {
-    const mounted = this.open.get(id)
-    if (mounted) {
-      this.open.delete(id)
-      await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
+    const running = this.deleting.get(id)
+    if (running) return await running
+    const deleting = this.remove(id, author)
+    this.deleting.set(id, deleting)
+    try {
+      await deleting
+    } finally {
+      if (this.deleting.get(id) === deleting) this.deleting.delete(id)
     }
+  }
+
+  private async remove(id: string, author: string): Promise<void> {
+    // Synchronously: from here on, a request finds the project being deleted.
+    const mounted = this.open.get(id)
+    this.open.delete(id)
+    this.lastUsed.delete(id)
+    await this.unmounting.get(id)?.catch(() => undefined)
+    if (mounted) await mounted.then(project => project.ctx.fiber.dispose()).catch(() => undefined)
     this.idleSummaries.delete(id)
     const machines = this.options.threadMachines
     if (machines) {
@@ -388,8 +511,19 @@ export class ProjectHost {
 
   /** 打开（或复用已打开的）Project 作用域，并保证协调者 Thread 存在。 */
   async mount(projectId: string): Promise<OpenProject> {
+    this.lastUsed.set(projectId, Date.now())
     const existing = this.open.get(projectId)
     if (existing) return await existing
+    const unmounting = this.unmounting.get(projectId)
+    if (unmounting) {
+      await unmounting.catch(() => undefined)
+      return await this.mount(projectId)
+    }
+    const deleting = this.deleting.get(projectId)
+    if (deleting) {
+      await deleting.catch(() => undefined)
+      throw new Error(`project not found: ${projectId}`)
+    }
     const mounting = (async () => {
       const record = await this.get(projectId)
       if (!record) throw new Error(`project not found: ${projectId}`)
@@ -503,7 +637,17 @@ export class ProjectHost {
     options: { after?: number; send: (event: Record<string, unknown>) => void },
   ): Promise<() => void> {
     const project = await this.mount(projectId)
-    const disposers: Array<() => void> = []
+    this.watchers.set(projectId, (this.watchers.get(projectId) ?? 0) + 1)
+    let unwatched = false
+    const unwatch = (): void => {
+      if (unwatched) return
+      unwatched = true
+      const left = (this.watchers.get(projectId) ?? 1) - 1
+      if (left > 0) this.watchers.set(projectId, left)
+      else this.watchers.delete(projectId)
+      this.lastUsed.set(projectId, Date.now())
+    }
+    const disposers: Array<() => void> = [unwatch]
     const buffered: Array<Record<string, unknown>> = []
     let ready = false
     const send = (event: Record<string, unknown>): void => {
@@ -729,6 +873,9 @@ export class ProjectHost {
   }
 
   async dispose(): Promise<void> {
+    if (this.idleSweep) clearInterval(this.idleSweep)
+    this.idleSweep = undefined
+    await Promise.allSettled([...this.unmounting.values()])
     const pending = [...this.open.values()]
     this.open.clear()
     for (const project of pending) {
@@ -739,8 +886,60 @@ export class ProjectHost {
     if (index) await index.then(entry => entry.ctx.fiber.dispose()).catch(() => undefined)
   }
 
+  /**
+   * Bring the server's control loop in step with this folder's projects, for
+   * a server that just started: every enabled routine gets its schedule entry
+   * (routines made before the server had a schedule, or changed while it was
+   * down), and a project with a thread that was working when the server
+   * stopped gets a `run.wake` so it mounts and its threads recover. Reads the
+   * stored facts; mounts nothing. `bootId` keys the wakes of one start.
+   */
+  async reconcile(bootId: string): Promise<{ routines: number; woken: string[] }> {
+    const effects = this.options.effects
+    if (!effects) return { routines: 0, woken: [] }
+    let routines = 0
+    const woken: string[] = []
+    for (const record of await this.list()) {
+      if (this.deleting.has(record.id)) continue
+      const facts = await this.readBoard(record.id, async board => ({
+        routines: (await board.list<RoutineData>('routine')).filter(fact => !fact.deleted),
+        working: (await board.list('agent')).some(fact => !fact.deleted && typeof fact.data === 'object' && fact.data !== null
+          && Reflect.get(fact.data, 'state') === 'working'),
+      }))
+      for (const fact of facts.routines) {
+        await this.mirrorRoutine(effects, record.id, fact.id, fact.data)
+        if (fact.data.enabled) routines += 1
+      }
+      if (facts.working && record.paused !== true && !record.archived && !this.open.has(record.id)) {
+        await effects.enqueue({
+          kind: RUN_WAKE,
+          key: `project:${record.id}:${bootId}`,
+          payload: { source: 'project', workspace: this.workspace, projectId: record.id },
+        })
+        woken.push(record.id)
+      }
+    }
+    return { routines, woken }
+  }
+
+  /** Read a project's Blackboard: the live one when mounted, else a short-lived one of its own. */
+  private async readBoard<T>(projectId: string, read: (board: BlackboardService) => Promise<T>): Promise<T> {
+    const mounted = this.open.get(projectId)
+    if (mounted) return await read((await mounted).blackboard)
+    const ctx = new Context()
+    try {
+      await ctx.plugin(blackboardLocal, { root: join(this.tnegaRoot, 'projects', projectId, 'blackboard') })
+      return await read(ctx.get('blackboard'))
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }
+
   private async projects(): Promise<ProjectsService> {
     this.indexScope ??= (async () => {
+      // A server finds folders with projects from these notes when it starts (see knownProjectWorkspaces).
+      await mkdir(this.tnegaRoot, { recursive: true })
+      await writeFile(join(this.tnegaRoot, WORKSPACE_NOTE), `${JSON.stringify({ path: this.workspace })}\n`, 'utf8')
       const ctx = new Context()
       await ctx.plugin(blackboardLocal, { root: join(this.tnegaRoot, 'blackboard') })
       await ctx.plugin(projectLocal, { root: join(this.tnegaRoot, 'projects') })
@@ -817,21 +1016,27 @@ export class ProjectHost {
             agent: () => registry.get(thread.id),
             isRoutine: async () => (await ctx.get('blackboard').list<RoutineData>('routine'))
               .some(fact => !fact.deleted && fact.data.threadId === thread.id),
+            watched: () => this.watched(record.id),
             onLimit: hit => {
               const why = hit.kind === 'time'
                 ? `Stopped: the turn ran past the ${Math.round(hit.turnMs / 60_000)}-minute limit for unattended work`
                 : `Stopped: the turn used ${hit.used} tokens, over this routine's budget of ${hit.budget}`
               // Once the turn has closed, the thread reports itself blocked: its parent hears
               // why, and the report sets the state, so the end of the turn cannot undo it.
+              // The coordinator has no parent: it tells the person in the main conversation.
               const stopped = registry.get(thread.id)
               const parentId = thread.parentId
-              if (parentId && stopped) {
+              if (stopped) {
                 void stopped.whenIdle().then(() => ctx.get('box').send({
                   sender: agentAddress(thread.id),
-                  recipients: [agentAddress(parentId)],
-                  placement: { kind: 'thread', threadId: thread.id },
-                  kind: 'blocked',
+                  recipients: [parentId ? agentAddress(parentId) : USER_ADDRESS],
+                  placement: parentId ? { kind: 'thread', threadId: thread.id } : { kind: 'main' },
+                  // The main conversation shows the coordinator's replies, not reports.
+                  kind: parentId ? 'blocked' : 'agent-reply',
                   text: why,
+                }).then(async () => {
+                  // A report sets a thread's state where its parent reads it; nobody reads the coordinator's.
+                  if (!parentId) await threads.setState(thread.id, 'blocked', why)
                 })).catch(() => undefined)
               }
             },
@@ -1003,9 +1208,17 @@ export class ProjectHost {
         const fact = await ctx.get('blackboard').read<RoutineData>('routine', routineId)
         await this.mirrorRoutine(effects, record.id, routineId, fact && !fact.deleted ? fact.data : undefined)
       }
+      // A delete waits for updates under way, so none can schedule a routine of a deleted project.
+      const mirroring = new Set<Promise<void>>()
       ctx.on('blackboard/commit', (event: { records: readonly FactRecord[] }) => {
-        for (const entry of event.records) if (entry.kind === 'routine') void mirror(entry.id).catch(() => undefined)
+        for (const entry of event.records) {
+          if (entry.kind !== 'routine') continue
+          const update = mirror(entry.id).catch(() => undefined)
+          mirroring.add(update)
+          void update.finally(() => mirroring.delete(update))
+        }
       })
+      ctx.fiber.effect(() => async () => { await Promise.all([...mirroring]) }, 'routine schedule updates')
       for (const fact of await routines.list()) await this.mirrorRoutine(effects, record.id, fact.id, fact.data)
     } else {
       routines.start()
@@ -1033,15 +1246,7 @@ export class ProjectHost {
 
   /** Every thread of a project, from its Blackboard, without mounting it. */
   private async threadIds(projectId: string): Promise<string[]> {
-    const mounted = this.open.get(projectId)
-    if (mounted) return (await (await mounted).threads.list()).map(thread => thread.id)
-    const ctx = new Context()
-    try {
-      await ctx.plugin(blackboardLocal, { root: join(this.tnegaRoot, 'projects', projectId, 'blackboard') })
-      return (await ctx.get('blackboard').list('agent')).map(fact => fact.id)
-    } finally {
-      await ctx.fiber.dispose()
-    }
+    return await this.readBoard(projectId, async board => (await board.list('agent')).map(fact => fact.id))
   }
 
   /** Keep the server's schedule entry for one routine in step with its fact; `undefined` removes it. */

@@ -783,6 +783,9 @@ export async function handleApi(
 
 export { isLoopbackAddress } from '@tnega/web-kit'
 
+/** How long a project stays mounted with nothing to do, on a host with a control loop (v2 server MVP §4.7). */
+export const PROJECT_IDLE_UNMOUNT_MS = 10 * 60_000
+
 export async function projectHostFor(
   context: ServerContext,
   workspace: string,
@@ -827,7 +830,8 @@ export async function projectHostFor(
     systemConfig: config,
     sandboxNetwork: sandboxNetworkFrom(context.configFile),
     ...(context.projectThreadLogs ? { threadSessions: context.projectThreadLogs } : {}),
-    ...(context.effects ? { effects: context.effects } : {}),
+    // With a control loop, routines wake their project, so an idle project can be unmounted.
+    ...(context.effects ? { effects: context.effects, idleUnmountMs: PROJECT_IDLE_UNMOUNT_MS } : {}),
     ...(threadMachines ? { threadMachines } : {}),
     ...(context.unattended ? { unattended: context.unattended } : {}),
     builtinTools: {
