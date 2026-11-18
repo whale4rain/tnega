@@ -834,6 +834,8 @@ export async function projectHostFor(
     ...(context.effects ? { effects: context.effects, idleUnmountMs: PROJECT_IDLE_UNMOUNT_MS } : {}),
     ...(threadMachines ? { threadMachines } : {}),
     ...(context.unattended ? { unattended: context.unattended } : {}),
+    ...(context.pullRequestLookup ? { pullRequestLookup: context.pullRequestLookup(path) } : {}),
+    ...(context.pullRequestForge ? { pullRequestForge: context.pullRequestForge(path) } : {}),
     builtinTools: {
       cwd: path,
       processes: processesFor(context, path),

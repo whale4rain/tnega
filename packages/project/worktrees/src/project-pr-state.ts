@@ -56,6 +56,48 @@ export const ghLookup: PullRequestLookup = url => new Promise(resolve => {
   })
 })
 
+/** `https://github.com/<owner>/<repo>/pull/<n>` → its parts; anything else is not a GitHub pull request. */
+export function githubPullRequest(url: string): { owner: string; repo: string; number: number } | undefined {
+  const match = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)(?:[/?#].*)?$/iu.exec(url)
+  if (!match?.[1] || !match[2] || !match[3]) return undefined
+  return { owner: match[1], repo: match[2], number: Number(match[3]) }
+}
+
+/** The REST answer for one pull request → a state. */
+export function parseApiState(body: unknown): PullRequestState | undefined {
+  if (typeof body !== 'object' || body === null) return undefined
+  const state: unknown = Reflect.get(body, 'state')
+  if (Reflect.get(body, 'merged') === true || typeof Reflect.get(body, 'merged_at') === 'string') return 'merged'
+  if (state === 'closed') return 'closed'
+  if (state === 'open') return Reflect.get(body, 'draft') === true ? 'draft' : 'open'
+  return undefined
+}
+
+/**
+ * Ask GitHub's REST API from this host, with the member's own token when they
+ * saved one. A server uses it instead of {@link ghLookup}: the `gh` login on
+ * the server is nobody's, and a thread's box is paused most of the time.
+ */
+export function githubApiLookup(options: { token: () => Promise<string | undefined>; fetch?: typeof fetch }): PullRequestLookup {
+  const get = options.fetch ?? fetch
+  return async url => {
+    const pr = githubPullRequest(url)
+    if (!pr) return undefined
+    const token = await options.token().catch(() => undefined)
+    const response = await get(`https://api.github.com/repos/${pr.owner}/${pr.repo}/pulls/${pr.number}`, {
+      headers: {
+        accept: 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'tnega',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+    })
+    if (!response.ok) return undefined
+    return parseApiState(await response.json())
+  }
+}
+
 function field(value: unknown, key: string): unknown {
   return typeof value === 'object' && value !== null ? Reflect.get(value, key) : undefined
 }

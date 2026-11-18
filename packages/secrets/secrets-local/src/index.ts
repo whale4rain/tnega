@@ -204,6 +204,11 @@ export class SecretVault {
     return [...merged].map(([name, value]) => ({ name, value })).sort((a, b) => a.name.localeCompare(b.name))
   }
 
+  /** The workspace's remembered values only: for keys added outside an Agent, like the egress proxy's. */
+  async remembered(workspace: string): Promise<Record<string, string>> {
+    return await this.saved.read(workspace)
+  }
+
   async list(scope: SecretScope): Promise<SecretInfo[]> {
     const saved = await this.saved.read(scope.workspace)
     const session = this.session.get(this.sessionKey(scope))

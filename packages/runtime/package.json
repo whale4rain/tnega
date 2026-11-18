@@ -25,6 +25,7 @@
     "@tnega/daemons": "workspace:*",
     "@tnega/effects-pg": "workspace:*",
     "@tnega/egress-proxy": "workspace:*",
+    "@tnega/environment": "workspace:*",
     "@tnega/execution-sandbox": "workspace:*",
     "@tnega/execution-secrets": "workspace:*",
     "@tnega/fs": "workspace:*",

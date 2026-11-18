@@ -4,7 +4,7 @@ import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
 import { PlaywrightBrowserHost } from '@tnega/browser-playwright'
 import { ProcessRegistry, type ToolsService } from '@tnega/tools'
 import { ApprovalBroker, type PermissionMode } from '@tnega/approval-host'
-import { ProjectHost, type ThreadMachines, type UnattendedLimits } from '@tnega/project-host'
+import { ProjectHost, type PullRequestForge, type PullRequestLookup, type ThreadMachines, type UnattendedLimits } from '@tnega/project-host'
 import type { HotPluginHost } from '@tnega/plugin-host'
 import type { PluginWorkshop } from '@tnega/plugin-host'
 import type { WebServerService } from '@tnega/web-kit'
@@ -93,4 +93,8 @@ export interface ServerContext {
   projectThreadMachines?: (workspace: string) => ThreadMachines | undefined
   /** Limits for Project turns nobody watches (a server). */
   unattended?: UnattendedLimits
+  /** Where a folder's pull requests stand, when not from the `gh` login on this host (a server). */
+  pullRequestLookup?: (workspace: string) => PullRequestLookup
+  /** Where a folder's threads open pull requests, when not with `gh` (a server). */
+  pullRequestForge?: (workspace: string) => PullRequestForge
 }
