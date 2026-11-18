@@ -9,7 +9,7 @@ import { Context } from '@tnega/core'
 import type { EffectService } from '@tnega/effects'
 import { effectsPg } from '@tnega/effects-pg'
 import { workspaceProjectStateRoot } from '@tnega/home'
-import { ProjectHost, ROUTINE_SCHEDULE, projectRoutineWakes, routineScheduleKey } from '../src/index.js'
+import { ProjectHost, ROUTINE_SCHEDULE, RUN_WAKE, knownProjectWorkspaces, projectRoutineWakes, routineScheduleKey } from '../src/index.js'
 
 let db: PGlite
 const cleanups: Array<() => Promise<void>> = []
@@ -93,4 +93,40 @@ it('drops the schedule entry of a paused or deleted routine, and of a deleted pr
   await expect.poll(async () => (await effects.schedules()).map(entry => entry.key)).toEqual([routineScheduleKey(record.id, kept.id)])
   await host.delete(record.id)
   expect(await effects.schedules()).toHaveLength(0)
+})
+
+it('schedules routines made before the server had a schedule when the server starts', async () => {
+  const clock = { now: Date.now() }
+  const { root, effects, workspace, open } = await server(clock)
+  // Made by a host with no control loop, as before the upgrade.
+  const before = new ProjectHost({ workspace, llm, systemConfig: QUIET, builtinTools: false, permission: 'read-only', approvals: new ApprovalBroker() })
+  const record = await before.create({ name: 'Old' })
+  const routine = await before.createRoutine(record.id, { title: 'Old digest', prompt: 'p', schedule: { kind: 'daily', time: '09:00' } })
+  await before.dispose()
+  expect(await effects.schedules()).toHaveLength(0)
+
+  const host = open()
+  expect(await knownProjectWorkspaces()).toContain(workspace)
+  const wakes = await root.plugin(projectRoutineWakes, { host: async () => host, workspaces: async () => [workspace] })
+  cleanups.push(() => wakes.dispose())
+  await expect.poll(async () => (await effects.schedules(ROUTINE_SCHEDULE)).map(entry => entry.key), { timeout: 10_000 })
+    .toEqual([routineScheduleKey(record.id, routine.id)])
+})
+
+it('wakes a project whose thread was working when the server stopped', async () => {
+  const clock = { now: Date.now() }
+  const { root, effects, workspace, open } = await server(clock)
+  const first = open()
+  const record = await first.create({ name: 'Interrupted' })
+  const project = await first.mount(record.id)
+  await project.threads.setState(record.coordinatorId, 'working')
+  await first.dispose()
+
+  const host = open()
+  const wakes = await root.plugin(projectRoutineWakes, { host: async () => host, workspaces: async () => [workspace] })
+  cleanups.push(() => wakes.dispose())
+  // The wake runs as soon as it is stored: the project is mounted with no request.
+  await expect.poll(async () => (await effects.schedules()).length === 0 && (await effects.pending(RUN_WAKE)).length === 0, { timeout: 10_000 }).toBe(true)
+  await expect.poll(() => host.unmountIdle(0, Date.now() + 1_000), { timeout: 10_000 }).toEqual([record.id])
+  expect(await effects.problems()).toHaveLength(0)
 })

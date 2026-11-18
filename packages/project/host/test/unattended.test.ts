@@ -107,3 +107,29 @@ it('opens a box for each Project thread but not for the coordinator, and forgets
   await projects.delete(record.id)
   expect(forgotten.sort()).toEqual([record.coordinatorId, child.id].sort())
 })
+
+it('tells the person when the coordinator\'s turn is stopped', async () => {
+  const { host: projects } = await host(hanging, { turnMs: 50 })
+  const record = await projects.create({ name: 'Stuck coordinator' })
+  await projects.sendUserMessage(record.id, 'Plan the week')
+  await expect.poll(async () => (await projects.snapshot(record.id)).messages
+    .find(envelope => envelope.kind === 'agent-reply')?.text, { timeout: 5_000 }).toMatch(/limit for unattended work/)
+  const project = await projects.mount(record.id)
+  await expect.poll(async () => (await project.threads.get(record.coordinatorId))?.state, { timeout: 5_000 }).toBe('blocked')
+})
+
+it('lets a turn someone is watching run past the time limit', async () => {
+  const { host: projects } = await host(hanging, { turnMs: 50 })
+  const record = await projects.create({ name: 'Watched' })
+  const unwatch = await projects.watch(record.id, { send: () => undefined })
+  const project = await projects.mount(record.id)
+  const child = await project.threads.spawn({ parentId: record.coordinatorId, goal: 'Long task' })
+  const agent = await project.threads.activate(child.id)
+  await agent.followup({ text: 'Go' })
+  await new Promise(resolve => setTimeout(resolve, 200))
+  expect(agent.status).toBe('running')
+  // The window closes: the next check stops it.
+  unwatch()
+  await agent.whenIdle()
+  await expect.poll(async () => (await project.threads.get(child.id))?.state, { timeout: 5_000 }).toBe('blocked')
+})

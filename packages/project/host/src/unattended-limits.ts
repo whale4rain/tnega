@@ -9,7 +9,10 @@ import type { SessionEvent } from '@tnega/session'
  * still apply, and nothing that asks is approved on its own.
  */
 export interface UnattendedLimits {
-  /** Longest a turn may run. Default 60 minutes. */
+  /**
+   * Longest a turn may run with nobody watching. Default 60 minutes. A turn
+   * someone has open in a window when the time is up gets another period.
+   */
   turnMs?: number
   /** Most tokens (prompt + completion) one turn of a routine's thread may use. Default 400,000. */
   routineTokens?: number
@@ -26,6 +29,8 @@ export interface WatchedTurns {
   agent: () => LiveAgent | undefined
   /** Whether this thread runs a routine; asked at the start of each turn. */
   isRoutine: () => Promise<boolean>
+  /** Whether someone has the project open now; asked when the time limit is up. */
+  watched?: () => boolean
   /** Called once the turn was stopped. */
   onLimit: (hit: LimitHit) => void
 }
@@ -65,8 +70,15 @@ export function limitUnattendedTurns(agentCtx: Context, limits: UnattendedLimits
       end()
       used = 0
       const current = ++turn
-      timer = setTimeout(() => stop({ kind: 'time', turnMs }), turnMs)
-      timer.unref()
+      const arm = (): void => {
+        timer = setTimeout(() => {
+          if (turn !== current) return
+          if (watched.watched?.()) arm()
+          else stop({ kind: 'time', turnMs })
+        }, turnMs)
+        timer.unref()
+      }
+      arm()
       void watched.isRoutine().then(routine => {
         if (routine && turn === current) budget = routineTokens
       }, () => undefined)

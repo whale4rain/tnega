@@ -1,8 +1,9 @@
 import { accountsCapability, BOX_WORKSPACE, boxLinkMachine, boxMachine, controlCapability, memberLoginOf, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
-import { projectRoutineWakes } from '@tnega/project-host'
+import { hasProjectState, knownProjectWorkspaces, projectRoutineWakes } from '@tnega/project-host'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
+import { readdir } from 'node:fs/promises'
 import { HttpError, errorMessage, sendError, writeSse } from '@tnega/web-kit'
 import { defaultWebRoot, handleStatic } from './static.js'
 import type { PtcRuntimeQuickjsConfig } from '@tnega/ptc-runtime-quickjs'
@@ -95,6 +96,26 @@ export interface WebServerOptions {
    * turns it on when the host passes nothing.
    */
   pluginDev?: string | boolean
+}
+
+/**
+ * Folders that may have projects: those a Project host noted, the app's
+ * folders, the scratch folder and, on a server, members' folders two levels
+ * down (`<members>/<login>/<folder>`), for projects from before the notes.
+ */
+async function projectFolders(configFile: string | undefined, membersRoot: string | undefined): Promise<string[]> {
+  const folders = [...await knownProjectWorkspaces(), ...((await readSystemConfig(configFile)).workspaces ?? []), defaultWorkspace()]
+  if (membersRoot) {
+    const children = async (path: string): Promise<string[]> => {
+      try {
+        return (await readdir(path, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => join(path, entry.name))
+      } catch {
+        return []
+      }
+    }
+    for (const member of await children(membersRoot)) folders.push(member, ...await children(member))
+  }
+  return dedupe(folders.map(folder => resolve(folder)))
 }
 
 /**
@@ -258,7 +279,15 @@ export async function startWebServer(
     ...(startConfig.computerDriverPath ? { computerDriverPath: startConfig.computerDriverPath } : {}),
   })
   await root.plugin(projectApi, { host: (workspace: string) => projectHostFor(context, workspace) })
-  if (context.effects) await root.plugin(projectRoutineWakes, { host: (workspace: string) => projectHostFor(context, workspace) })
+  if (context.effects) {
+    const membersRoot = options.accounts?.membersRoot
+    await root.plugin(projectRoutineWakes, {
+      host: (workspace: string) => projectHostFor(context, workspace),
+      // At start: schedule routines and wake working projects in every folder that has projects.
+      workspaces: async () => (await projectFolders(configFile, membersRoot)).filter(hasProjectState),
+      onError: (workspace: string, error: unknown) => console.warn(`[tnega] could not reconcile projects in ${workspace}:`, error),
+    })
+  }
   await root.plugin(usageRoutes, { configFile })
   await root.plugin(contextInsightsRoutes, { configFile })
   // /btw and the temporary chat: answered by the session's model (or the one picked), never saved.
