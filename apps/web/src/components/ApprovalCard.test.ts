@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it } from 'vitest'
 import { ApprovalCard } from './Conversation'
@@ -58,4 +58,15 @@ it('shows the risk the agent flagged and allows only this one call', () => {
   expect(text).toContain('Asks you about this one call')
   view.getByRole('button', { name: 'Allow once' }).click()
   expect(answers).toEqual([true])
+})
+
+it('names the tool and its folder in the head row, and denies on Escape', () => {
+  const answers: boolean[] = []
+  const view = render(createElement(ApprovalCard, {
+    approval: { id: 'approval', tool: 'shell', input: JSON.stringify({ command: 'npm test', cwd: 'scratch' }) },
+    onAnswer: allow => answers.push(allow),
+  }))
+  expect(view.getByText('Shell · in scratch')).toBeTruthy()
+  fireEvent.keyDown(view.getByRole('button', { name: 'Allow once' }), { key: 'Escape' })
+  expect(answers).toEqual([false])
 })

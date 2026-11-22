@@ -1,8 +1,9 @@
-import { ShieldCheck, X } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 import { useMxcHint } from '../lib/sandbox-hint'
+import { InstallNotice } from './InstallNotice'
 
 /**
- * One dismissible line above the chat on Windows 24H2+ when Microsoft MXC
+ * One dismissible notice above the chat on Windows 24H2+ when Microsoft MXC
  * could sandbox commands but is not installed. tnega keeps using its own
  * Windows sandbox until it is.
  */
@@ -10,14 +11,15 @@ export function MxcHint() {
   const { setup, visible, dismiss } = useMxcHint()
   if (!visible || !setup) return null
   return (
-    <div className="notice notice-info mxc-hint" role="status">
-      <ShieldCheck size={14} />
-      <span>
-        This Windows can run the agent's commands in Microsoft MXC, a stronger sandbox.
-        {' '}Install it with <code>{setup.install.command}</code>, then restart tnega.
-        {' '}<a href={setup.install.url} target="_blank" rel="noreferrer noopener">About MXC</a>
-      </span>
-      <button type="button" className="icon-button tiny" aria-label="Dismiss MXC hint" onClick={dismiss}><X size={14} /></button>
-    </div>
+    <InstallNotice
+      icon={<ShieldCheck size={16} />}
+      command={setup.install.command}
+      after="Run it, then restart tnega."
+      about={{ url: setup.install.url, label: 'About MXC' }}
+      dismissLabel="Dismiss MXC hint"
+      onDismiss={dismiss}
+    >
+      This Windows can run the agent's commands in Microsoft MXC, a stronger sandbox.
+    </InstallNotice>
   )
 }

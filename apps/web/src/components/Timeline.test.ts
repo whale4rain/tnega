@@ -325,3 +325,39 @@ it('folds an entire streaming turn into one line when the reader hides the proce
   view.rerender(createElement(Timeline, { entries: [completed], running: false, actions: {}, processView: 'answer' }))
   expect(view.getByText('Finished the work.')).toBeTruthy()
 })
+
+it('writes failures on the step line instead of a badge, with one mark for the group', () => {
+  const tool = (callId: string, extra: Partial<ToolView>): Block => ({
+    kind: 'tool', id: callId, tool: { callId, name: 'write_file', args: { path: `${callId}.sh` }, status: 'ok', durationMs: 400, ...extra },
+  })
+  const denied = { status: 'error' as const, error: 'write_file requires human approval in read-only mode', errorName: 'ToolAuthorizationError' }
+  const entry: Entry = { kind: 'agent', id: 'failed-steps', status: 'done', blocks: [
+    tool('a', denied),
+    tool('b', denied),
+    tool('c', {}),
+    { kind: 'text', id: 'answer', text: 'Both writes were refused.' },
+  ] }
+  const view = render(createElement(Timeline, { entries: [entry], running: false, actions: {} }))
+  expect(view.container.querySelector('.pill')).toBeNull()
+  const line = view.container.querySelector('.step-failed')
+  expect(line?.textContent).toBe('· 2 of 2 failed')
+  const head = line?.closest('button')
+  expect(head?.querySelectorAll('.pen-mark')).toHaveLength(1)
+  expect(head?.querySelector('.pen-failed')).toBeTruthy()
+  fireEvent.click(head!)
+  // Opened, each failed row says why at its right edge; opening the row shows the whole error instead.
+  const reasons = [...view.container.querySelectorAll('.tool-reason')].map(node => node.textContent)
+  expect(reasons).toEqual(['write_file requires human approval in read-only mode', 'write_file requires human approval in read-only mode'])
+  fireEvent.click(view.getAllByRole('button', { name: /a\.sh, Failed/ })[0]!)
+  expect(view.container.querySelectorAll('.tool-reason')).toHaveLength(1)
+  expect(view.container.querySelector('.tool-row.open .tool-output.error')?.textContent).toContain('human approval')
+})
+
+it('keeps turn actions as round buttons with names, and fork as a worded pill', () => {
+  const onFork = vi.fn()
+  const entry: Entry = { kind: 'agent', id: 'answered', status: 'done', forkId: 'm1', blocks: [{ kind: 'text', id: 't', text: 'Done.' }] }
+  const view = render(createElement(Timeline, { entries: [entry], running: false, actions: { onFork } }))
+  expect(view.getByRole('button', { name: 'Copy response' }).className).toContain('turn-action')
+  fireEvent.click(view.getByRole('button', { name: 'Fork from here' }))
+  expect(onFork).toHaveBeenCalledWith('m1')
+})

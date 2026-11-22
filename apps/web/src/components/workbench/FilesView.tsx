@@ -9,6 +9,7 @@ import { fileOpenKind } from '../../lib/file-open'
 import { FileTree, type FileTreeHandle } from '../files/FileTree'
 import { FileActionsContext } from '../FileMenu'
 import { Markdown } from '../Markdown'
+import { EmptyState, Loading } from '../EmptyState'
 
 /** CodeMirror and its grammars load only when a file is first opened. */
 const CodeEditor = lazy(() => import('../files/CodeEditor'))
@@ -159,8 +160,8 @@ export function FilesView({
         </nav>
         <section className="wb-detail files-editor-pane">
           {error && <div className="notice notice-error wb-notice" role="alert"><span>{error}</span></div>}
-          {loading && <div className="file-preview-status"><span className="spinner" /> Opening {loading}…</div>}
-          {!loading && !file && <div className="file-preview-status">Pick a file to read or edit it.</div>}
+          {loading && <Loading>Opening {loading}…</Loading>}
+          {!loading && !file && <EmptyState arrow="left">Pick a file to read or edit it.</EmptyState>}
           {!loading && file?.reason === 'binary' && <div className="file-preview-status">{file.path} is a binary file.</div>}
           {!loading && file?.reason === 'too-large' && <div className="file-preview-status">{file.path} is too large to open here ({Math.round(file.size / 1024)} KB).</div>}
           {!loading && file?.content !== undefined && open && rendered && (
@@ -169,7 +170,7 @@ export function FilesView({
             </div>
           )}
           {!loading && file?.content !== undefined && open && !rendered && (
-            <Suspense fallback={<div className="file-preview-status"><span className="spinner" /> Opening editor…</div>}>
+            <Suspense fallback={<Loading>Opening editor…</Loading>}>
               <CodeEditor
                 key={file.path}
                 path={file.path}

@@ -12,6 +12,7 @@ export function Dialog({
   icon,
   className,
   width = 520,
+  header = true,
 }: {
   title: string
   description?: ReactNode
@@ -24,6 +25,8 @@ export function Dialog({
   icon?: ReactNode
   className?: string
   width?: number
+  /** False for a dialog that lays out its own title (Settings puts it atop its nav); Close still floats top right. */
+  header?: boolean
 }) {
   const panel = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -44,17 +47,23 @@ export function Dialog({
   return createPortal(
     <div className="dialog-scrim" onPointerDown={event => event.target === event.currentTarget && onClose()}>
       <div className={`dialog${className ? ` ${className}` : ''}`} role="dialog" aria-modal="true" aria-label={title} ref={panel} style={{ maxWidth: width }}>
-        <header className="dialog-header">
-          {icon && <span className="dialog-icon" aria-hidden>{icon}</span>}
-          <div>
-            <h2 className="dialog-title">{title}</h2>
-            {description && <p className="dialog-description">{description}</p>}
-          </div>
-          {actions && <div className="dialog-actions">{actions}</div>}
-          <button type="button" className="icon-button dialog-close" aria-label="Close" onClick={onClose}>
-            <X size={14} />
+        {header ? (
+          <header className="dialog-header">
+            {icon && <span className="dialog-icon" aria-hidden>{icon}</span>}
+            <div>
+              <h2 className="dialog-title">{title}</h2>
+              {description && <p className="dialog-description">{description}</p>}
+            </div>
+            {actions && <div className="dialog-actions">{actions}</div>}
+            <button type="button" className="icon-button dialog-close" aria-label="Close" onClick={onClose}>
+              <X size={16} />
+            </button>
+          </header>
+        ) : (
+          <button type="button" className="icon-button dialog-close dialog-close-floating" aria-label="Close" onClick={onClose}>
+            <X size={16} />
           </button>
-        </header>
+        )}
         <div className="dialog-body">{children}</div>
         {footer && <footer className="dialog-footer">{footer}</footer>}
       </div>

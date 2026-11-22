@@ -21,7 +21,7 @@ A dialog with two columns.
   - A single on/off decision puts the switch on the card's right, on the title row.
   - A list (models, secrets, routes) is sunken rows (48, radius 14) inside the card, with the default marked in words ("Default"), not a coloured badge.
   - A group of numbers is a two-column grid of fields inside one card.
-- **Save** lives in a footer that appears only when something changed: *Cancel* (plain) and *Save changes* (ink). Leaving with unsaved changes asks once.
+- **Save** lives in a footer at the foot of the right side, shown only where there are settings that save together (Models, Approvals, Tools). Until something changed it is quiet: a `--text-3` note, *Cancel* (plain) and *Save changes* (sunken). Once something changed the note says "You have unsaved changes." in ink and *Save changes* turns ink. Leaving with unsaved changes asks once (`confirmDialog`, *Discard*). Appearance applies at once and never counts as a change.
 
 This replaces the old long page of label + bordered field pairs: a section now reads as a few decisions.
 

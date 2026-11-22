@@ -63,3 +63,9 @@ it('keeps typed line breaks with `breaks` and shows no empty lines between block
   const plain = render(createElement(Markdown, { text: 'One\nTwo' }))
   expect(plain.container.querySelectorAll('br')).toHaveLength(0)
 })
+
+it('right-aligns number columns, header included, and leaves text columns alone', () => {
+  const view = render(createElement(Markdown, { text: '| Part | Count |\n| --- | --- |\n| Ribs | 8 |\n| Shaft | 1,200 |' }))
+  const cells = [...view.container.querySelectorAll('th, td')].map(cell => [cell.textContent, cell.classList.contains('num')])
+  expect(cells).toEqual([['Part', false], ['Count', true], ['Ribs', false], ['8', true], ['Shaft', false], ['1,200', true]])
+})

@@ -1,4 +1,5 @@
-import { ImageIcon, Pencil, X } from 'lucide-react'
+import { ArrowUp, ImageIcon, Pencil, X } from 'lucide-react'
+import { PenMark } from './PenMark'
 import type { ImageAttachment } from '../lib/types'
 
 /** A message typed while the agent runs, held until the run ends or steered in now. */
@@ -27,33 +28,33 @@ export function QueuedMessages({
   onRemove: (item: QueuedMessage) => void
 }) {
   if (!items.length) return null
+  const when = live ? 'Sent when this run ends' : 'Waiting for you to send it'
   return (
     <section className="queued-panel" aria-label="Queued messages">
-      <div className="queued-head">
-        {live ? 'Queued · sent when this run ends' : 'Queued · waiting for you'}
-      </div>
       <ul className="queued-items">
         {items.map(item => (
           <li key={item.id} className="queued-item">
+            <PenMark kind="waiting" size={16} label={when} />
             <span className="queued-text" title={item.text}>{item.text || 'Images'}</span>
             {item.images.length > 0 && (
               <span className="queued-images" aria-label={`${item.images.length} image${item.images.length === 1 ? '' : 's'}`}>
                 <ImageIcon size={12} />{item.images.length}
               </span>
             )}
+            <button type="button" className="queued-action" aria-label="Edit queued message" title="Edit" onClick={() => onEdit(item)}>
+              <Pencil size={14} />
+            </button>
+            <button type="button" className="queued-action" aria-label="Remove queued message" title="Remove" onClick={() => onRemove(item)}>
+              <X size={14} />
+            </button>
             <button
               type="button"
-              className="button ghost small"
+              className="queued-action queued-send"
+              aria-label={live ? 'Steer now' : 'Send now'}
               onClick={() => onSend(item)}
-              title={live ? 'The agent reads it at its next step' : 'Send it as the next message'}
+              title={live ? 'Steer now: the agent reads it at its next step' : 'Send it as the next message'}
             >
-              {live ? 'Steer now' : 'Send'}
-            </button>
-            <button type="button" className="icon-button tiny" aria-label="Edit queued message" title="Edit" onClick={() => onEdit(item)}>
-              <Pencil size={12} />
-            </button>
-            <button type="button" className="icon-button tiny" aria-label="Remove queued message" title="Remove" onClick={() => onRemove(item)}>
-              <X size={12} />
+              <ArrowUp size={14} strokeWidth={2.2} />
             </button>
           </li>
         ))}

@@ -31,6 +31,8 @@ The Board answers "what needs me, what is moving", in that order.
 4. **Waiting on others** (count): flat rows with the `waiting` mark.
 5. One line: `done` mark, "7 done today". It opens the history, which lists finished threads as flat rows grouped by day.
 
+Which group a thread is in: waiting on you, blocked, failed, or a result you have not opened yet → Your turn; running → On it; idle (paused until another agent, a message or a schedule moves it) → Waiting on others; finished and read, or resolved → done. "N going" counts everything not finished. Stop, Resolve and Reopen are round buttons that appear on a row's hover, over the time.
+
 Removed from the Board: step-segment bars, artifact chips, token counts and active minutes. Those live in the thread itself. The Board is not a dashboard.
 
 ## Workbench
@@ -39,7 +41,7 @@ The Workbench is a panel (see [shell.md](shell.md)) with tabs on top and white c
 
 ### Tabs
 
-- A row 40 tall. Tools you use often are **pills with a word** (Work, Files, Changes); tools you use less are round icon buttons (Terminal, Browser, Context).
+- A row 40 tall (`--tabs-h`). Tools you use often are **pills with a word** (Work, which the code still calls Board, Files, Changes); tools you use less are round icon buttons (Library, Routines, Terminal, Browser, Context). A count is a plain number beside the word in `--text-3`, never a coloured badge; a project tab with something waiting on you shows the `you` mark in place of its icon.
 - The open tab is a white pill (`--surface-raised`), 600. Others are plain, `--text-2`, with `--surface-hover` on hover.
 - Document tabs (a file preview, a thread, a subagent) follow a thin vertical rule, as pills with a close ×.
 - On the desktop app the top row is the title bar; tabs sit under it.

@@ -4,7 +4,6 @@ import {
   FileSpreadsheet,
   FileText,
   FlaskConical,
-  History,
   Languages,
   Lightbulb,
   PenLine,
@@ -18,6 +17,7 @@ import { relativeTime } from '../lib/hooks'
 import type { AgentType, SessionSummary } from '../lib/types'
 import { UMBRELLA_CANOPY, UMBRELLA_SHAFT } from '../lib/avatar'
 import { eyeOffset, recentSessions, welcomeGreeting } from '../lib/welcome'
+import { PenMark, type PenKind } from './PenMark'
 
 interface Starter {
   icon: LucideIcon
@@ -128,14 +128,14 @@ export function WelcomeStarters({ agentType, onPick, disabled }: { agentType: Ag
         <button
           key={starter.title}
           type="button"
-          className="chip welcome-beat"
+          className="welcome-starter welcome-beat"
           style={beat(3 + index)}
           disabled={disabled}
           title={starter.prompt}
           aria-label={starter.title}
           onClick={() => onPick(starter.prompt)}
         >
-          <starter.icon size={14} />
+          <starter.icon size={15} aria-hidden />
           {starter.title}
         </button>
       ))}
@@ -143,7 +143,17 @@ export function WelcomeStarters({ agentType, onPick, disabled }: { agentType: Ag
   )
 }
 
-/** The last few sessions in this folder, one quiet row each; nothing when there are none. */
+/** Whose turn a recent session is on, as a pen mark and the words beside it. */
+function recentState(session: SessionSummary, when: string): { kind: PenKind; note: string } {
+  if (session.waiting) return { kind: 'you', note: 'waiting on you' }
+  if (session.running) return { kind: 'working', note: `working · ${when}` }
+  return { kind: 'idle', note: when }
+}
+
+/**
+ * The last few sessions in this folder, one row each with its pen mark: one waiting on you rises
+ * to the top and says so; the rest say when. Nothing when there are none.
+ */
 export function WelcomeRecent({ sessions, onOpen, now = Date.now() }: { sessions: readonly SessionSummary[]; onOpen: (id: string) => void; now?: number }) {
   const recent = recentSessions(sessions)
   if (recent.length === 0) return null
@@ -153,11 +163,18 @@ export function WelcomeRecent({ sessions, onOpen, now = Date.now() }: { sessions
       {recent.map(session => {
         const title = session.title || 'Untitled session'
         const when = relativeTime(session.updatedAt, now)
+        const state = recentState(session, when)
         return (
-          <button key={session.id} type="button" className="welcome-recent-row" aria-label={`${title}, ${when}`} onClick={() => onOpen(session.id)}>
-            <History size={14} />
+          <button
+            key={session.id}
+            type="button"
+            className={`welcome-recent-row${session.waiting ? ' needs-you' : ''}`}
+            aria-label={`${title}, ${state.note}`}
+            onClick={() => onOpen(session.id)}
+          >
+            <PenMark kind={state.kind} size={16} />
             <span className="welcome-recent-title">{title}</span>
-            <span className="welcome-recent-time">{when}</span>
+            <span className="welcome-recent-time">{state.note}</span>
           </button>
         )
       })}

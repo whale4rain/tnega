@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { errorText } from '../lib/hooks'
 import type { AuthSession } from '../lib/types'
 import { ROLE_LABEL } from './ServerAdmin'
+import { SettingsCard } from './SettingsCard'
 
 /**
  * The signed-in person on a tnega server: who they are, signing out and
@@ -37,28 +38,30 @@ export function AccountSettings({ session, onSignedOut }: { session: AuthSession
 
   return <div className="account-settings">
     {error && <div className="notice notice-error" role="alert">{error}</div>}
-    <div className="effective-card">
-      <div className="effective-row"><span className="muted">Signed in as</span><span>{account.name} <span className="muted">({account.login})</span></span></div>
-      <div className="effective-row"><span className="muted">Role</span><span>{ROLE_LABEL[account.role]}</span></div>
-      {session.workspace && <div className="effective-row"><span className="muted">Your folder</span><code>{session.workspace}</code></div>}
-    </div>
-    <div>
-      <button type="button" className="button secondary small" onClick={() => void signOut()}>Sign out</button>
-    </div>
+    <SettingsCard
+      title={account.name}
+      description={`${account.login} · ${ROLE_LABEL[account.role]}`}
+      control={<button type="button" className="button secondary small" onClick={() => void signOut()}>Sign out</button>}
+    >
+      {session.workspace && <div className="effective-card">
+        <div className="effective-row"><span>Your folder</span><code>{session.workspace}</code></div>
+      </div>}
+    </SettingsCard>
 
-    <form className="form-grid" onSubmit={event => void changePassword(event)} aria-label="Change password">
-      <label className="field">
-        <span className="field-label">Current password</span>
-        <input type="password" value={current} onChange={event => setCurrent(event.target.value)} autoComplete="current-password" required />
-      </label>
-      <label className="field">
-        <span className="field-label">New password</span>
-        <input type="password" value={next} onChange={event => setNext(event.target.value)} autoComplete="new-password" minLength={10} required />
-      </label>
-      <div className="field span-2">
-        <span className="muted small">{passwordNote ?? 'At least 10 characters. Changing it signs your other devices out.'}</span>
-        <div><button type="submit" className="button secondary small" disabled={!current || !next}>Change password</button></div>
-      </div>
-    </form>
+    <SettingsCard title="Password" description={passwordNote ?? 'At least 10 characters. Changing it signs your other devices out.'}>
+      <form className="form-grid" onSubmit={event => void changePassword(event)} aria-label="Change password">
+        <label className="field">
+          <span className="field-label">Current password</span>
+          <input type="password" value={current} onChange={event => setCurrent(event.target.value)} autoComplete="current-password" required />
+        </label>
+        <label className="field">
+          <span className="field-label">New password</span>
+          <input type="password" value={next} onChange={event => setNext(event.target.value)} autoComplete="new-password" minLength={10} required />
+        </label>
+        <div className="field span-2">
+          <div><button type="submit" className="button secondary small" disabled={!current || !next}>Change password</button></div>
+        </div>
+      </form>
+    </SettingsCard>
   </div>
 }

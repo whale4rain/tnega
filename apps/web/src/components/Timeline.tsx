@@ -3,22 +3,14 @@ import {
   Check,
   ChevronRight,
   Copy,
-  FilePen,
   FileText,
   GitBranch,
-  Globe,
   Info,
   Layers,
   Lightbulb,
   SlidersHorizontal,
-  Brain,
   Pencil,
   RotateCcw,
-  Search,
-  SquareTerminal,
-  Wrench,
-  X,
-  Network,
   SquareMousePointer,
   MousePointerClick,
 } from 'lucide-react'
@@ -30,8 +22,9 @@ import type { ProcessView } from '../lib/process-view'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
 import { formatDuration, formatTokens, presentLive, presentOutcome, presentRun, stringify } from '../lib/timeline'
 import { officeFiles } from '../lib/office'
-import { codeModeOutput, needsAttention, presentTool, readableOutput, summarizeSteps, type ToolFamily } from '../lib/tools'
+import { codeModeOutput, needsAttention, presentTool, readableOutput, summarizeSteps } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
+import { PenMark, type PenKind } from './PenMark'
 import { ImageStrip } from './ImageStrip'
 import { splitPickedContext } from '../lib/browser-live'
 import { fileName, splitAttachedFiles } from '../lib/attached-files'
@@ -274,9 +267,10 @@ function AttachedFileChip({ path, onOpen }: { path: string; onOpen?: (path: stri
   )
 }
 
+/** A turn action: a round 32 button under the turn, shown on hover or keyboard focus (Umbrella conversation.md). */
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" className="icon-button tiny" aria-label={label} title={label} onClick={onClick}>
+    <button type="button" className="turn-action" aria-label={label} title={label} onClick={onClick}>
       {children}
     </button>
   )
@@ -436,11 +430,17 @@ const AgentTurn = memo(function AgentTurn({
   }
 
   return (
-    <div className={`agent-turn${live ? ' is-live' : ''}${latest ? ' is-latest' : ''}`}>
-      <div className="agent-avatar" aria-hidden>
-        {agent
-          ? <AgentAvatar id={agent.id} role={agent.role ?? 'agent'} size={18} live={live} weather={weather === 'clear' && !live ? undefined : weather} title={agent.role === 'coordinator' ? 'Agent' : undefined} />
-          : <span className="brand-mark small disc" />}
+    <div className={`agent-turn turn${live ? ' is-live' : ''}${latest ? ' is-latest' : ''}`}>
+      {/* The umbrella disc says who is speaking, once per turn; a subagent's transcript wears its own avatar. */}
+      <div className="agent-avatar turn-disc" aria-hidden>
+        <AgentAvatar
+          id={agent?.id ?? 'main'}
+          role={agent ? agent.role ?? 'agent' : 'coordinator'}
+          size={26}
+          live={live}
+          weather={weather === 'clear' && !live ? undefined : weather}
+          {...(agent?.role === 'coordinator' || !agent ? { title: 'Agent' } : {})}
+        />
       </div>
       <div className="agent-body">
         {presentation.process.length > 0 && (
@@ -476,11 +476,11 @@ const AgentTurn = memo(function AgentTurn({
             {entry.forkId && actions.onFork && (
               <button
                 type="button"
-                className="turn-action-fork"
+                className="turn-action turn-action-fork"
                 title="Start a new session that continues from this reply"
                 onClick={() => actions.onFork?.(entry.forkId!)}
               >
-                <GitBranch size={12} />Fork from here
+                <GitBranch size={14} aria-hidden />Fork from here
               </button>
             )}
           </div>
@@ -512,26 +512,35 @@ function ProcessHead({ blocks, live, open, onToggle }: { blocks: readonly Block[
   const thoughts = blocks.filter(block => block.kind === 'reasoning').length
   const running = [...tools].reverse().find(tool => tool.status === 'running')
   const current = running ? presentTool(running) : undefined
+  const failed = tools.filter(needsAttention).length
   const title = live
     ? current ? `${current.verb}${current.target ? ` ${current.target}` : ''}` : 'Thinking'
     : tools.length ? summarizeSteps(tools) : thoughts ? thoughtTitle(stepsDuration(blocks)) : 'Show details'
   const duration = !live && tools.length ? stepsDuration(blocks) : undefined
-  const Icon = current ? FAMILY_ICON[current.family] : Layers
   return (
     <button
       type="button"
-      className="tool-group-head"
+      className="tool-group-head step-line"
       onClick={onToggle}
       aria-expanded={open}
-      aria-label={live ? `Working: ${title}${tools.length ? `, ${tools.length} ${tools.length === 1 ? 'step' : 'steps'} so far` : ''}` : title}
+      aria-label={live ? `Working: ${title}${tools.length ? `, ${tools.length} ${tools.length === 1 ? 'step' : 'steps'} so far` : ''}` : `${title}${failed ? `, ${failed} of ${tools.length} failed` : ''}`}
     >
-      <span className="tool-icon"><Icon size={14} /></span>
+      <PenMark kind={live ? 'working' : failed ? 'failed' : 'done'} size={16} />
       <span className={`tool-group-title${live ? ' shimmer' : ''}`}>{title}</span>
-      {live && tools.length > 1 && <span className="tool-group-summary">{tools.length} steps</span>}
-      {live && <span className="spinner" aria-hidden />}
-      {duration !== undefined && <span className="tool-duration">{formatDuration(duration)}</span>}
-      <ChevronRight size={14} className="chevron" />
+      {live && tools.length > 1 && <span className="tool-group-summary">· {tools.length} steps</span>}
+      <StepTail failed={failed} total={tools.length} duration={duration} />
+      <ChevronRight size={14} className="chevron" aria-hidden />
     </button>
+  )
+}
+
+/** What follows a step line's words: failures written out in --danger, then the time it took. */
+function StepTail({ failed, total, duration }: { failed: number; total: number; duration: number | undefined }) {
+  return (
+    <>
+      {failed > 0 && <span className="step-failed">· {total > 1 ? `${failed} of ${total} failed` : 'failed'}</span>}
+      {total > 0 && duration !== undefined && <span className="tool-duration">· {formatDuration(duration)}</span>}
+    </>
   )
 }
 
@@ -577,10 +586,10 @@ function Thought({ text, streaming, durationMs }: { text: string; streaming: boo
   const title = streaming ? 'Thinking' : thoughtTitle(durationMs)
   return (
     <div className={`thought${open ? ' open' : ''}${streaming ? ' is-live' : ''}`}>
-      <button type="button" className="thought-head" aria-expanded={open} onClick={() => setChosen(!open)}>
-        <span className="tool-icon"><Lightbulb size={14} /></span>
+      <button type="button" className="thought-head step-line" aria-expanded={open} onClick={() => setChosen(!open)}>
+        <span className="step-mark" aria-hidden><Lightbulb size={14} /></span>
         <span className={`thought-title${streaming ? ' shimmer' : ''}`}>{title}</span>
-        <ChevronRight size={14} className="chevron" />
+        <ChevronRight size={14} className="chevron" aria-hidden />
       </button>
       {open && <div ref={body} className={`thought-body${streaming ? ' is-live' : ''}`}>{text}</div>}
     </div>
@@ -589,19 +598,26 @@ function Thought({ text, streaming, durationMs }: { text: string; streaming: boo
 
 function ThinkingLine({ hasContent }: { hasContent: boolean }) {
   return (
-    <div className="thinking" role="status">
-      <span className="thinking-dots" aria-hidden><i /><i /><i /></span>
+    <div className="thinking step-line" role="status">
+      <PenMark kind="working" size={16} />
       <span className="shimmer">{hasContent ? 'Working' : 'Thinking'}</span>
     </div>
   )
 }
 
+/**
+ * Something the agent's run wants you to know (Umbrella asks.md, Notices): one white card, a sunken disc
+ * with the subject's icon and a sentence. A failure carries the failed mark instead of the disc; the
+ * mark's label says the severity in words.
+ */
 function Notice({ tone, text }: { tone: 'info' | 'warn' | 'error'; text: string }) {
   const Icon = tone === 'info' ? Info : AlertTriangle
   return (
-    <div className={`notice notice-${tone}`}>
-      <Icon size={14} />
-      <span>{text}</span>
+    <div className={`notice-card is-${tone}`}>
+      {tone === 'error'
+        ? <span className="notice-lead"><PenMark kind="failed" size={20} label="Failed" /></span>
+        : <span className="notice-disc" role="img" aria-label={tone === 'warn' ? 'Warning' : 'Note'}><Icon size={16} aria-hidden /></span>}
+      <span className="notice-text">{text}</span>
     </div>
   )
 }
@@ -630,22 +646,11 @@ function SettingChange({ text }: { text: string }) {
 
 // ---------------------------------------------------------------------------
 
-const FAMILY_ICON: Record<ToolFamily, typeof Wrench> = {
-  read: FileText,
-  write: FilePen,
-  search: Search,
-  shell: SquareTerminal,
-  web: Globe,
-  agent: Network,
-  memory: Brain,
-  other: Wrench,
-}
-
 /**
  * A run of steps. One tool call is its own row; anything more folds to one
- * line: the current step while it runs, then what was done and how long it
- * took. Opened, the steps hang from the same rail a thought or a tool's
- * detail uses.
+ * line with one mark for the whole group (done, working while any runs,
+ * failed if any failed): the current step while it runs, then what was done
+ * and how long it took. Opened, the steps are flat rows indented under the line.
  */
 function StepGroup({ steps, live }: { steps: Step[]; live: boolean }) {
   const [open, setOpen] = useState(false)
@@ -660,27 +665,25 @@ function StepGroup({ steps, live }: { steps: Step[]; live: boolean }) {
   // While steps run, the folded line names the current one, like a status bar.
   const current = live ? [...tools].reverse().find(tool => tool.status === 'running') : undefined
   const step = current ? presentTool(current) : undefined
-  const Icon = step ? FAMILY_ICON[step.family] : Layers
   const duration = running ? undefined : stepsDuration(steps)
   const title = step ? step.verb : tools.length ? summarizeSteps(tools) : thoughtTitle(duration)
   const count = `${tools.length} ${tools.length === 1 ? 'step' : 'steps'}`
   const label = step
     ? `${step.verb}${step.target ? ` ${step.target}` : ''}${tools.length > 1 ? `, ${count}` : ''}, Running`
     : `${title}${failed ? `, ${failed} failed` : ''}${running ? ', Running' : ''}`
+  const mark = running ? 'working' : failed ? 'failed' : 'done'
 
   return (
     <div className={`tool-group${open ? ' open' : ''}${current ? ' is-live' : ''}`}>
-      <button type="button" className="tool-group-head" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={label}
+      <button type="button" className="tool-group-head step-line" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={label}
         title={step?.target ? `${step.verb} ${step.fullTarget ?? step.target}` : undefined}>
-        <span className="tool-icon"><Icon size={14} /></span>
+        <PenMark kind={mark} size={16} />
         <span className={`tool-group-title${current ? ' shimmer' : ''}`}>{title}</span>
         {/* A long command shrinks to an ellipsis instead of pushing the line wider. */}
         {step?.target && <span className="tool-target">{step.target}</span>}
-        {step && tools.length > 1 && <span className="tool-group-summary">{count}</span>}
-        {failed > 0 && <span className="pill pill-danger">{failed} failed</span>}
-        {running && <span className="spinner" aria-hidden />}
-        {tools.length > 0 && duration !== undefined && <span className="tool-duration">{formatDuration(duration)}</span>}
-        <ChevronRight size={14} className="chevron" />
+        {step && tools.length > 1 && <span className="tool-group-summary">· {count}</span>}
+        <StepTail failed={failed} total={tools.length} duration={duration} />
+        <ChevronRight size={14} className="chevron" aria-hidden />
       </button>
       {open && (
         <div className="tool-group-list">
@@ -693,10 +696,20 @@ function StepGroup({ steps, live }: { steps: Step[]; live: boolean }) {
   )
 }
 
+/** One line of what a failure said, for the right edge of its row. */
+function failureReason(tool: ToolView): string {
+  return (tool.error ?? 'Failed').split('\n').find(line => line.trim())?.trim() ?? 'Failed'
+}
+
+/**
+ * One step: its mark, the verb in a column, the target in mono and, when it
+ * failed in a way a person must act on, the reason at the right in --danger.
+ * Opening it turns the row sunken and shows the full input and output inside.
+ */
 function ToolRow({ tool }: { tool: ToolView }) {
   const [open, setOpen] = useState<boolean | undefined>(undefined)
   const expanded = open ?? (tool.name === 'run_code' && tool.status === 'running')
-  const { family, verb, target, fullTarget } = presentTool(tool)
+  const { verb, target, fullTarget } = presentTool(tool)
   const children = tool.children ?? []
   const running = children.filter(child => child.status === 'running').length
   const failed = children.filter(needsAttention).length
@@ -704,21 +717,20 @@ function ToolRow({ tool }: { tool: ToolView }) {
   const attention = needsAttention(tool)
   // A model-facing error looks like any finished call; its detail still shows the message.
   const status = tool.status === 'error' && !attention ? 'note' : tool.status
-  const Icon = FAMILY_ICON[family]
+  const mark = tool.status === 'running' ? 'working' : attention ? 'failed' : 'done'
   return (
     <div className={`tool-row status-${status}${expanded ? ' open' : ''}`}>
       <button type="button" className="tool-row-head" onClick={() => setOpen(!expanded)} aria-expanded={expanded}
         title={target ? `${verb} ${fullTarget ?? target}` : undefined} aria-label={`${verb}${target ? ` ${target}` : ''}${children.length ? `, ${children.length} tool calls, ${completed} done, ${running} running, ${failed} failed` : ''}${tool.status === 'running' ? ', Running' : attention ? ', Failed' : status === 'note' ? ', Returned an error to the agent' : ''}`}>
-        <span className="tool-icon"><Icon size={14} /></span>
+        <PenMark kind={mark} size={14} />
         <span className="tool-verb">{verb}</span>
         {target && <span className="tool-target">{target}</span>}
         {children.length ? <span className="tool-group-summary">{children.length} tool {children.length === 1 ? 'call' : 'calls'} · {completed} done{running ? ` · ${running} running` : ''}{failed ? ` · ${failed} failed` : ''}</span> : null}
         <span className="tool-meta">
-          {tool.status === 'running' && <span className="spinner" aria-label="Running" />}
-          {attention && <X size={12} className="tool-status-error" aria-label="Failed" />}
-          {!attention && tool.status !== 'running' && tool.durationMs !== undefined && <span className="tool-duration">{formatDuration(tool.durationMs)}</span>}
+          {attention && !expanded
+            ? <span className="tool-reason">{failureReason(tool)}</span>
+            : !attention && tool.status !== 'running' && tool.durationMs !== undefined && <span className="tool-duration">{formatDuration(tool.durationMs)}</span>}
         </span>
-        <ChevronRight size={14} className="chevron" />
       </button>
       {expanded && <ToolDetail tool={tool} />}
     </div>
@@ -790,33 +802,37 @@ function ToolDetail({ tool }: { tool: ToolView }) {
 
 // ---------------------------------------------------------------------------
 
-const SUBAGENT_STATUS: Record<SubagentView['status'], { label: string; tone: string }> = {
-  starting: { label: 'Starting', tone: 'running' },
-  running: { label: 'Running', tone: 'running' },
-  ready: { label: 'Finished', tone: 'ok' },
-  failed: { label: 'Failed', tone: 'error' },
+const SUBAGENT_STATUS: Record<SubagentView['status'], { label: string; mark: PenKind }> = {
+  starting: { label: 'Starting', mark: 'working' },
+  running: { label: 'Running', mark: 'working' },
+  ready: { label: 'Finished', mark: 'done' },
+  failed: { label: 'Failed', mark: 'failed' },
 }
 
+/** A subagent's report: a result card led by its own avatar, its state as a mark and a word, and its last reply. */
 function SubagentCard({ agent, onOpen }: { agent: SubagentView; onOpen?: ((id: string, label: string) => void) | undefined }) {
   const status = SUBAGENT_STATUS[agent.status]
   const latest = agent.replies.at(-1)
   return (
-    <div className="subagent-card">
-      <div className="subagent-head">
+    <div className="result-card subagent-card">
+      <div className="result-head">
         <AgentAvatar
           id={agent.id ?? agent.callId ?? agent.label}
-          size={32}
+          size={24}
           live={agent.status === 'running' || agent.status === 'starting'}
-          weather={agent.status === 'starting' ? 'sprite' : agent.status === 'running' ? 'drizzle' : agent.status === 'failed' ? 'storm' : undefined}
         />
-        <div className="subagent-titles">
-          <div className="subagent-label">{agent.label}</div>
-          <div className="subagent-sub">{agent.mode === 'fork' ? 'Forked subagent' : 'Subagent'}</div>
+        <div className="result-titles">
+          <div className="result-title subagent-label">{agent.label}</div>
+          <div className="result-meta">
+            <PenMark kind={status.mark} size={14} />
+            <span>{agent.mode === 'fork' ? 'Forked subagent' : 'Subagent'} · {status.label}</span>
+          </div>
         </div>
-        <span className={`status-pill tone-${status.tone}`}>
-          {status.tone === 'running' ? <span className="spinner tiny" /> : <span className="dot" />}
-          {status.label}
-        </span>
+        {agent.id && onOpen && (
+          <button type="button" className="result-action" aria-label={`Open transcript of ${agent.label}`} onClick={() => onOpen(agent.id!, agent.label)}>
+            Open <ChevronRight size={14} aria-hidden />
+          </button>
+        )}
       </div>
       {agent.task && agent.task !== agent.label && <p className="subagent-task">{agent.task}</p>}
       {agent.error && <Notice tone="error" text={agent.error} />}
@@ -825,25 +841,33 @@ function SubagentCard({ agent, onOpen }: { agent: SubagentView; onOpen?: ((id: s
           <Markdown text={latest.length > 1200 ? `${latest.slice(0, 1200)}…` : latest} />
         </div>
       )}
-      {agent.id && onOpen && (
-        <button type="button" className="link-button" onClick={() => onOpen(agent.id!, agent.label)}>
-          Open transcript <ChevronRight size={12} />
-        </button>
-      )}
     </div>
   )
 }
 
+/** Files this turn changed: a result card (done mark, a title, the line counts) over a sunken list of paths. */
 function EditedFiles({ files, onOpen }: { files: Array<{ path: string; additions?: number; deletions?: number }>; onOpen?: ((path: string) => void) | undefined }) {
   const { show, menu } = useFileMenu()
+  const additions = files.reduce((sum, file) => sum + (file.additions ?? 0), 0)
+  const deletions = files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)
+  const counted = files.some(file => file.additions !== undefined || file.deletions !== undefined)
+  const first = files[0]
   return (
-    <div className="files-card">
+    <div className="result-card files-card">
       {menu}
-      <div className="files-head">
-        <FilePen size={14} />
-        <span>{files.length === 1 ? '1 file changed' : `${files.length} files changed`}</span>
+      <div className="result-head">
+        <PenMark kind="done" size={24} />
+        <div className="result-titles">
+          <div className="result-title">{files.length === 1 ? '1 file changed' : `${files.length} files changed`}</div>
+          {counted && <div className="result-meta"><span className="diff-add">+{additions}</span> <span className="diff-del">−{deletions}</span></div>}
+        </div>
+        {onOpen && first && (
+          <button type="button" className="result-action" aria-label="Review changes" onClick={() => onOpen(first.path)}>
+            Review <ChevronRight size={14} aria-hidden />
+          </button>
+        )}
       </div>
-      <ul className="files-list">
+      <ul className="files-list result-preview">
         {files.map(file => {
           const body = (
             <>

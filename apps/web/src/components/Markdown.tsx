@@ -23,7 +23,7 @@ const components: Components = {
   li({ children }) { return <li><FileReferences>{children}</FileReferences></li> },
   strong({ children }) { return <strong><FileReferences>{children}</FileReferences></strong> },
   em({ children }) { return <em><FileReferences>{children}</FileReferences></em> },
-  td({ children }) { return <td><FileReferences>{children}</FileReferences></td> },
+  td({ children, className, style }) { return <td className={className} style={style}><FileReferences>{children}</FileReferences></td> },
   pre({ children }) {
     const child = Array.isArray(children) ? children[0] : children
     const className = child && typeof child === 'object' && 'props' in child
@@ -164,14 +164,65 @@ function remarkLineBreaks() {
   return visit
 }
 
+interface HastNode {
+  type: string
+  tagName?: string
+  value?: string
+  properties?: Record<string, unknown>
+  children?: HastNode[]
+}
+
+function hastText(node: HastNode): string {
+  if (node.type === 'text') return node.value ?? ''
+  return (node.children ?? []).map(hastText).join('')
+}
+
+function hastRows(node: HastNode): HastNode[] {
+  return (node.children ?? []).flatMap(child => child.tagName === 'tr' ? [child] : hastRows(child))
+}
+
+function hastCells(row: HastNode): HastNode[] {
+  return (row.children ?? []).filter(cell => cell.tagName === 'td' || cell.tagName === 'th')
+}
+
+const NUMBER = /^[-+−]?[$€£¥]?\d[\d,.\s]*(?:%|[kKmMbB]|ms|s)?$/
+
+/**
+ * Numbers line up on the right (Umbrella conversation.md, tables): a column whose
+ * body cells are all numbers gets `num` on every cell, its header included.
+ * A column the author aligned in the Markdown keeps that alignment.
+ */
+function rehypeNumericColumns() {
+  const visit = (node: HastNode) => {
+    if (node.tagName === 'table') {
+      const rows = hastRows(node)
+      const body = rows.filter(row => hastCells(row).some(cell => cell.tagName === 'td'))
+      const width = Math.max(0, ...rows.map(row => hastCells(row).length))
+      for (let column = 0; column < width; column += 1) {
+        const values = body.map(row => hastText(hastCells(row)[column] ?? { type: 'root' }).trim()).filter(Boolean)
+        if (!values.length || !values.every(value => NUMBER.test(value))) continue
+        for (const row of rows) {
+          const cell = hastCells(row)[column]
+          if (!cell || cell.properties?.align) continue
+          cell.properties = { ...cell.properties, className: ['num'] }
+        }
+      }
+      return
+    }
+    node.children?.forEach(visit)
+  }
+  return visit
+}
+
 const PLUGINS = [remarkGfm]
 const PLUGINS_WITH_BREAKS = [remarkGfm, remarkLineBreaks]
+const REHYPE = [rehypeNumericColumns]
 
 /** `breaks` keeps single newlines as line breaks; use it for what the user wrote. */
 export const Markdown = memo(function Markdown({ text, breaks = false }: { text: string; breaks?: boolean }) {
   return (
     <div className="prose">
-      <ReactMarkdown remarkPlugins={breaks ? PLUGINS_WITH_BREAKS : PLUGINS} components={components} urlTransform={urlTransform}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={breaks ? PLUGINS_WITH_BREAKS : PLUGINS} rehypePlugins={REHYPE} components={components} urlTransform={urlTransform}>{text}</ReactMarkdown>
     </div>
   )
 })

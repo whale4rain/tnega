@@ -96,11 +96,8 @@ export function QuestionCard({ request, onAnswer }: {
   }
   return (
     <form className="question-card" aria-label="会话问题" onSubmit={event => { event.preventDefault(); void submit() }}>
-      <div className="question-head">
-        <PenMark kind="you" size={20} />
-        <strong>需要你的意见</strong>
-        <span className="question-mode">{request.mode === 'blocking' ? '正在等待回答' : '继续执行中 · 回答会作为补充指示'}</span>
-      </div>
+      <div className="question-layout">
+      <PenMark kind="you" size={28} label="需要你的意见" className="question-mark" />
       <div className="question-body">
         {request.questions.map(question => {
           const answer = draft[question.id]
@@ -120,6 +117,7 @@ export function QuestionCard({ request, onAnswer }: {
                 <div className="question-options">
                   {question.options.map(option => (
                     <label key={option.label} className={`question-option${selected.includes(option.label) ? ' selected' : ''}`}>
+                      <PenMark kind={selected.includes(option.label) ? 'done' : 'idle'} size={16} />
                       <input
                         type={question.multiple ? 'checkbox' : 'radio'}
                         name={`${request.requestId}-${question.id}`}
@@ -148,10 +146,11 @@ export function QuestionCard({ request, onAnswer }: {
           )
         })}
       </div>
+      </div>
       {error && <div className="question-error" role="alert">{error}</div>}
       <div className="question-actions">
-        <span className="muted small">{request.mode === 'blocking' ? '提交后继续会话' : '会话结束后提交也会继续处理'}</span>
-        <button type="submit" className="button primary small" disabled={!complete || submitting}>{submitting ? '提交中…' : !hasAnswers && complete ? '跳过问题' : '提交回答'}</button>
+        <button type="submit" className={`button ${!hasAnswers && complete ? 'ghost' : 'primary'}`} disabled={!complete || submitting}>{submitting ? '提交中…' : !hasAnswers && complete ? '跳过问题' : '提交回答'}</button>
+        <span className="question-mode">{request.mode === 'blocking' ? '正在等待回答 · 提交后继续会话' : '继续执行中 · 回答会作为补充指示'}</span>
       </div>
     </form>
   )

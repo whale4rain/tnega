@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fileName } from '../../lib/office'
 import { revealInRail } from '../../lib/rail'
 import { BOARD_KEY, closeDoc, isProjectKey, isTool, openDoc, openTool, projectTabKey, select, type DocTab, type ProjectTabId, type ToolId, type WorkbenchState } from '../../lib/workbench'
+import { PenMark } from '../PenMark'
 import { PreviewView } from '../preview/FilePreview'
 import { SideChatView, type SideSession } from './SideChatView'
 import { BrowserView } from './BrowserView'
@@ -123,44 +124,35 @@ export function Workbench({
         {project?.tabs.map(({ tab, badge, attention }) => {
           const meta = PROJECT_META[tab]
           const key = projectTabKey(tab)
-          const Icon = meta.icon
           return (
-            <button
+            <ToolTab
               key={key}
-              type="button"
-              role="tab"
-              aria-label={meta.label}
-              aria-selected={active === key}
-              className={`wb-tab${active === key ? ' active' : ''}`}
-              title={meta.hint}
-              onClick={() => onChange(current => select(current, key))}
-            >
-              <Icon size={14} aria-hidden />
-              <span className="wb-tab-label">{meta.label}</span>
-              {badge !== undefined && badge > 0 && <span className={`wb-count${attention ? ' attention' : ''}`}>{badge}</span>}
-            </button>
+              label={meta.label}
+              hint={meta.hint}
+              icon={meta.icon}
+              shape={PILL_TABS.has(tab) ? 'pill' : 'round'}
+              active={active === key}
+              count={badge}
+              attention={attention}
+              onSelect={() => onChange(current => select(current, key))}
+            />
           )
         })}
         {projectDocs.map(item => <DocTabButton key={item.key} doc={item} active={active === item.key} onSelect={() => onChange(current => select(current, item.key))} onClose={() => onChange(current => closeDoc(current, item.key, BOARD_KEY))} />)}
         {project && <span className="wb-rail-divider" aria-hidden />}
         {tools.map(tool => {
           const meta = TOOL_META[tool]
-          const Icon = meta.icon
           return (
-            <button
+            <ToolTab
               key={tool}
-              type="button"
-              role="tab"
-              aria-label={meta.label}
-              aria-selected={active === tool}
-              className={`wb-tab${active === tool ? ' active' : ''}`}
-              title={meta.hint}
-              onClick={() => onChange(current => select(current, tool))}
-            >
-              <Icon size={14} aria-hidden />
-              <span className="wb-tab-label">{meta.label}</span>
-              {tool === 'changes' && changeCount !== undefined && changeCount > 0 && <span className="wb-count">{changeCount}</span>}
-            </button>
+              label={meta.label}
+              hint={meta.hint}
+              icon={meta.icon}
+              shape={PILL_TABS.has(tool) ? 'pill' : 'round'}
+              active={active === tool}
+              count={tool === 'changes' ? changeCount : undefined}
+              onSelect={() => onChange(current => select(current, tool))}
+            />
           )
         })}
         {otherDocs.length > 0 && <span className="wb-rail-divider" aria-hidden />}
@@ -193,6 +185,44 @@ export function Workbench({
       </div>
       </div>
     </aside>
+  )
+}
+
+/**
+ * Tools you use often are pills with a word; the rest are round icon buttons with the name in the
+ * tooltip and accessible label (umbrella/work.md, Tabs).
+ */
+const PILL_TABS: ReadonlySet<ToolId | ProjectTabId> = new Set<ToolId | ProjectTabId>(['board', 'files', 'changes'])
+
+/**
+ * A tool tab. The open tab is a white pill in 600; the others are plain --text-2. A count is a
+ * plain number beside the word, never a coloured badge; something waiting on you adds the `you` mark.
+ */
+function ToolTab({ label, hint, icon: Icon, shape, active, count, attention, onSelect }: {
+  label: string
+  hint: string
+  icon: LucideIcon
+  shape: 'pill' | 'round'
+  active: boolean
+  count?: number | undefined
+  attention?: boolean | undefined
+  onSelect: () => void
+}) {
+  const shown = count !== undefined && count > 0 ? count : undefined
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-label={label}
+      aria-selected={active}
+      className={`wb-tab ${shape}${active ? ' active' : ''}`}
+      title={attention ? `${hint}: something waits on you` : hint}
+      onClick={onSelect}
+    >
+      {attention ? <PenMark kind="you" size={16} /> : <Icon size={shape === 'round' ? 16 : 14} aria-hidden />}
+      {shape === 'pill' && <span className="wb-tab-label">{label}</span>}
+      {shown !== undefined && <span className="wb-count">{shown}</span>}
+    </button>
   )
 }
 
