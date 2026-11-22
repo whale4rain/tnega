@@ -120,9 +120,6 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.13
         version: 6.43.13
-      '@fontsource-variable/fraunces':
-        specifier: 5.2.8
-        version: 5.2.8
       '@fontsource-variable/geist':
         specifier: 5.3.0
         version: 5.3.0
@@ -3365,9 +3362,6 @@ packages:
 
   '@fast-csv/parse@4.3.6':
     resolution: {integrity: sha512-uRsLYksqpbDmWaSmzvJcuApSEe38+6NQZBUsuAyMZKqHxH0g1wcJgsKUvN3WC8tewaqFjBMMGrkHmC+T7k8LvA==}
-
-  '@fontsource-variable/fraunces@5.2.8':
-    resolution: {integrity: sha512-dQYLYcmyrTqIjN+f5XM6hLUkIvj7OTuGfKET+2uyJ2fIe7LFmdbyDprymjAVvrDhOwc9lzibJbqaFdKk96S3oA==}
 
   '@fontsource-variable/geist@5.3.0':
     resolution: {integrity: sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA==}
@@ -7594,8 +7588,6 @@ snapshots:
       lodash.isnil: 4.0.0
       lodash.isundefined: 3.0.1
       lodash.uniq: 4.5.0
-
-  '@fontsource-variable/fraunces@5.2.8': {}
 
   '@fontsource-variable/geist@5.3.0': {}
 

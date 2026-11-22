@@ -1432,9 +1432,9 @@
   margin: 0 0 4px;
   font-family: var(--font-display);
   font-size: var(--text-2xl);
-  font-weight: 500;
+  font-weight: var(--display-weight);
   line-height: 1.15;
-  letter-spacing: -0.005em;
+  letter-spacing: var(--display-tracking);
   color: var(--text);
 }
 

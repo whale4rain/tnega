@@ -16,24 +16,32 @@
   --font-sans: "Geist Variable", "Geist", "Noto Sans SC Variable", "Noto Sans SC", ui-sans-serif, -apple-system, BlinkMacSystemFont,
     "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Noto Sans SC Variable", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  /* High-contrast serif for a few words of mood (the Board greeting, the welcome); never body text. */
-  --font-display: "Fraunces Variable", "Fraunces", "Noto Sans SC Variable", Georgia, "Times New Roman", serif;
+  /* Umbrella titles: Geist at 700 with tight tracking, sturdy like the handle (tnega-design §6.1). A few words only. */
+  --font-display: "Geist Variable", "Geist", "Noto Sans SC Variable", ui-sans-serif, -apple-system, "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --display-weight: 700;
+  --display-tracking: -0.025em;
 
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-lg: 14px;
-  --text-xl: 18.5px;
-  --text-2xl: 24px;
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-md: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 19px;
+  --text-2xl: 26px;
   /* The new-session greeting only: a few words of welcome, in the display serif. */
   --text-3xl: 34px;
 
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  /* Umbrella shapes (tnega-design §3.8): soft, concentric, never outlined. Panels 2xl, cards xl, fields lg,
+     buttons and chips are pills. Inner radius = outer radius − padding. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 22px;
   --radius-full: 999px;
+
+  /* The hand layer (tnega-design §3.9): one pen, drawn in over --pen-draw when a mark first lands. */
+  --pen-draw: 380ms;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -138,9 +146,12 @@
   --syntax-type: #9a3a63;
   --syntax-property: #1b5f75;
 
-  --shadow-sm: 0 1px 2px rgba(20, 32, 52, 0.06);
-  --shadow-md: 0 1px 2px rgba(20, 32, 52, 0.05), 0 6px 18px -6px rgba(20, 32, 52, 0.13);
-  --shadow-lg: 0 2px 6px rgba(20, 32, 52, 0.06), 0 24px 48px -12px rgba(20, 32, 52, 0.24);
+  /* Umbrella: surfaces in the page never cast shadows; only popovers (md) and dialogs (lg) do. */
+  --shadow-sm: none;
+  --shadow-md: 0 12px 32px -12px rgba(14, 14, 14, 0.18);
+  --shadow-lg: 0 24px 64px -20px rgba(14, 14, 14, 0.28);
+  --disc: #b6b6b6;
+  --pen: var(--text);
   --scrim: rgba(18, 26, 40, 0.3);
   --avatar-ink: #1d2230;
 
@@ -214,9 +225,11 @@
   --syntax-type: #f2a0c0;
   --syntax-property: #7fd3e6;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.45), 0 28px 60px -12px rgba(0, 0, 0, 0.7);
+  --shadow-sm: none;
+  --shadow-md: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.75);
+  --disc: #3a3a3d;
+  --pen: var(--text);
   --scrim: rgba(4, 6, 10, 0.62);
   --avatar-ink: #4d566a;
 
@@ -585,6 +598,93 @@
   --syntax-property: #80d0e8;
 }
 
+/* Umbrella (default since 2026-11-22, tnega-design §3.4): a flat light-grey ground, near-white surfaces and one ink.
+   No accent colour: the one thing to press is solid ink, everything else is grey. Meaning lives in the hand-drawn
+   marks (§3.9); status colours only appear on errors, diffs and warnings. Dark is chalk on slate. */
+[data-palette="umbrella"][data-theme="light"] {
+  --bg: #ececec;
+  --bg-sidebar: #ececec;
+  --surface: #f7f7f7;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e4e4e4;
+  --surface-hover: rgba(14, 14, 14, 0.05);
+  --surface-active: rgba(14, 14, 14, 0.085);
+  --border: #d6d6d6;
+  --border-strong: #b0b0b0;
+  --border-focus: #0e0e0e;
+
+  --text: #0e0e0e;
+  --text-2: #3a3a3c;
+  --text-3: #545457;
+  --text-inverse: #f7f7f7;
+
+  --accent: #0e0e0e;
+  --accent-hover: #2a2a2c;
+  --accent-soft: #e0e0e0;
+  --accent-text: #1c1c1e;
+
+  --success: #1f6a3a;
+  --success-soft: #dcebe1;
+  --warn: #7a4c00;
+  --warn-soft: #f1e6d2;
+  --danger: #a62b25;
+  --danger-soft: #f4dfdd;
+
+  --code-bg: #f1f1f1;
+  --code-border: #dedede;
+  --selection: rgba(14, 14, 14, 0.12);
+
+  --syntax-keyword: #7f3470;
+  --syntax-string: #1f6a3a;
+  --syntax-number: #7a4c00;
+  --syntax-comment: #545457;
+  --syntax-function: #285480;
+  --syntax-type: #8c2a53;
+  --syntax-property: #13566e;
+}
+
+[data-palette="umbrella"][data-theme="dark"] {
+  --bg: #161617;
+  --bg-sidebar: #161617;
+  --surface: #1f1f21;
+  --surface-raised: #29292b;
+  --surface-sunken: #121213;
+  --surface-hover: rgba(255, 255, 255, 0.055);
+  --surface-active: rgba(255, 255, 255, 0.09);
+  --border: #343437;
+  --border-strong: #4a4a4e;
+  --border-focus: #e8e8e8;
+
+  --text: #ececec;
+  --text-2: #c4c4c7;
+  --text-3: #9d9da1;
+  --text-inverse: #121213;
+
+  --accent: #e8e8e8;
+  --accent-hover: #ffffff;
+  --accent-soft: rgba(255, 255, 255, 0.09);
+  --accent-text: #e0e0e0;
+
+  --success: #84d4a2;
+  --success-soft: rgba(132, 212, 162, 0.12);
+  --warn: #eec070;
+  --warn-soft: rgba(238, 192, 112, 0.12);
+  --danger: #f58e86;
+  --danger-soft: rgba(245, 142, 134, 0.12);
+
+  --code-bg: #121213;
+  --code-border: #343437;
+  --selection: rgba(255, 255, 255, 0.16);
+
+  --syntax-keyword: #d6a8e8;
+  --syntax-string: #84d4a2;
+  --syntax-number: #eec070;
+  --syntax-comment: #9d9da1;
+  --syntax-function: #a9c7e8;
+  --syntax-type: #f5a3c4;
+  --syntax-property: #80d0e8;
+}
+
 /*
  * Chart series (Context tab, Settings → Context insights). Each series borrows
  * a syntax colour, so every palette in both modes gets its own muted, distinct
@@ -622,20 +722,20 @@
 }
 
 [data-text-size="small"] {
-  --text-xs: 10.5px;
-  --text-sm: 11.5px;
-  --text-md: 12px;
-  --text-lg: 13px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
   --text-3xl: 32px;
 }
 
 [data-text-size="large"] {
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-md: 14.5px;
-  --text-lg: 15.5px;
-  --text-xl: 20.5px;
-  --text-2xl: 26.5px;
+  --text-xs: 12.5px;
+  --text-sm: 13.5px;
+  --text-md: 15px;
+  --text-lg: 16.5px;
+  --text-xl: 21px;
+  --text-2xl: 28.5px;
   --text-3xl: 37px;
 }
 
