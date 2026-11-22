@@ -8,7 +8,7 @@ import type { PendingQuestionRequest, QuestionAnswerItem, UserQuestion } from '@
 import { Box, Text, useInput, usePaste } from 'ink'
 import { useState } from 'react'
 import type { Approval } from './controller.js'
-import { color } from './theme.js'
+import { mark } from './theme.js'
 import { truncate } from './width.js'
 
 export function ApprovalPanel({ approval, more, onAnswer, width }: {
@@ -26,16 +26,24 @@ export function ApprovalPanel({ approval, more, onAnswer, width }: {
   })
   const preview = previewInput(approval.input)
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={color.warn} paddingX={1} width={width} marginTop={1}>
-      <Text><Text color={color.warn}>Waiting for you</Text><Text dimColor> · approval{more ? ` (${more} more)` : ''}</Text></Text>
+    <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} width={width} marginTop={1}>
+      <Text><YourTurn /><Text dimColor> · approval{more ? ` (${more} more)` : ''}</Text></Text>
       {approval.grant
         ? <Text bold>Let the agent {approval.grant.label}?</Text>
         : <Text bold>Allow {approval.tool}{approval.via === 'run_code' ? ' from a CodeMode script' : ''}?</Text>}
-      {approval.reason && <Text><Text color={color.warn}>Flagged risk:</Text> {approval.reason}</Text>}
+      {approval.reason && <Text><Text bold>Flagged risk:</Text> {approval.reason}</Text>}
       {preview && <Text dimColor>{firstLines(preview, 8)}</Text>}
       <Text><Text bold>y</Text><Text dimColor>{approval.grant ? ' allow in this session · ' : ' allow · '}</Text><Text bold>n</Text><Text dimColor> or esc deny</Text></Text>
     </Box>
   )
+}
+
+/**
+ * The panel's first words: the your-turn mark and the one underline the
+ * screen gets (design guide §3.9), in ink rather than a warning colour.
+ */
+function YourTurn() {
+  return <Text bold>{mark.you} <Text underline>Waiting for you</Text></Text>
 }
 
 function firstLines(text: string, count: number): string {
@@ -84,9 +92,9 @@ export function QuestionPanel({ request, onAnswer, width }: {
     }
   }
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={color.warn} paddingX={1} width={width} marginTop={1}>
+    <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} width={width} marginTop={1}>
       <Text>
-        <Text color={color.warn}>Waiting for you</Text>
+        <YourTurn />
         <Text dimColor> · question{request.questions.length > 1 ? ` ${step + 1} of ${request.questions.length}` : ''}</Text>
       </Text>
       {question.secret !== undefined
