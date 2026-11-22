@@ -103,7 +103,6 @@ export function WelcomeUmbrella() {
         </mask>
         <rect className="welcome-umbrella-body" width="64" height="64" mask={`url(#${mask})`} />
       </svg>
-      <span className="welcome-umbrella-shadow" />
     </div>
   )
 }

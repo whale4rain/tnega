@@ -52,10 +52,10 @@ select {
 select {
   appearance: none;
   min-height: var(--control);
-  padding: 0 34px 0 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background-color: var(--surface);
+  padding: 0 34px 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  background-color: var(--surface-sunken);
   background-image:
     linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
     linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
@@ -67,13 +67,12 @@ select {
 }
 
 select:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  background-color: color-mix(in srgb, var(--surface-sunken) 100%, var(--text) 4%);
 }
 
 select:focus-visible {
-  outline: 0;
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 
 select:disabled {
@@ -103,7 +102,6 @@ button:disabled {
 :focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
-  border-radius: var(--radius-xs);
 }
 
 code,
@@ -117,11 +115,9 @@ kbd {
   padding: 0 5px;
   min-width: 18px;
   text-align: center;
-  border: 1px solid var(--border);
-  border-bottom-width: 2px;
-  border-radius: var(--radius-xs);
-  background: var(--surface);
-  font-size: 10.5px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: var(--text-xs);
   line-height: 16px;
   color: var(--text-2);
 }
@@ -359,8 +355,8 @@ kbd {
 }
 
 /* ==========================================================================
-   Brand mark — the Tnega cloud with two white eyes: the agent itself, the
-   same cloud the coordinator avatar draws. Weather happens around it.
+   Brand mark — the Tnega umbrella with two eyes on its canopy: the agent
+   itself, the same umbrella the main agent avatar draws. Weather falls on it.
    ========================================================================== */
 
 .brand-mark {
@@ -370,20 +366,39 @@ kbd {
   width: var(--size);
   height: var(--size);
   /*
-   * The cloud is a mask filled with the palette's accent (ink in Carbon), and
-   * the eyes are cut out of it, so they show whatever is behind the mark and
-   * work in every palette and mode. The favicon and app icon are a white
-   * cloud on a dark tile.
+   * The umbrella is a mask filled with the palette's accent (ink in Umbrella),
+   * and the eyes are cut out of the canopy, so they show whatever is behind
+   * the mark and work in every palette and mode. The favicon and app icon
+   * are the ink umbrella on the grey --disc (see .brand-mark.disc).
    */
   background: var(--accent);
-  -webkit-mask: var(--brand-eyes) center / contain no-repeat, var(--brand-cloud) center / contain no-repeat;
+  -webkit-mask: var(--brand-eyes) center / contain no-repeat, var(--brand-umbrella) center / contain no-repeat;
   -webkit-mask-composite: xor;
-  mask: var(--brand-eyes) center / contain no-repeat exclude, var(--brand-cloud) center / contain no-repeat;
+  mask: var(--brand-eyes) center / contain no-repeat exclude, var(--brand-umbrella) center / contain no-repeat;
+}
+
+/* The mark on its neutral disc (§2 of the design guide): the disc is the layout layer, the umbrella is ink. */
+.brand-mark.disc {
+  position: relative;
+  border-radius: var(--radius-full);
+  background: var(--disc);
+  -webkit-mask: none;
+  mask: none;
+}
+
+.brand-mark.disc::before {
+  content: '';
+  position: absolute;
+  inset: 8%;
+  background: var(--accent);
+  -webkit-mask: var(--brand-eyes) center / contain no-repeat, var(--brand-umbrella) center / contain no-repeat;
+  -webkit-mask-composite: xor;
+  mask: var(--brand-eyes) center / contain no-repeat exclude, var(--brand-umbrella) center / contain no-repeat;
 }
 
 :root {
-  --brand-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%23000'%3E%3Ccircle cx='32' cy='23' r='16'/%3E%3Ccircle cx='18' cy='34' r='14'/%3E%3Ccircle cx='46' cy='34' r='14'/%3E%3Ccircle cx='24' cy='46' r='13'/%3E%3Ccircle cx='40' cy='46' r='13'/%3E%3C/g%3E%3C/svg%3E");
-  --brand-eyes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%23fff'%3E%3Crect x='20.8' y='23.5' width='8.4' height='17' rx='4.2'/%3E%3Crect x='34.8' y='23.5' width='8.4' height='17' rx='4.2'/%3E%3C/g%3E%3C/svg%3E");
+  --brand-umbrella: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M6.5 32.5C7.5 17.5 18.5 8.5 32 8.5S56.5 17.5 57.5 31.5C53.5 28.2 48.2 28.4 44.8 32.2C41.2 28.4 35.6 28.4 32 32.4C28.4 28.4 22.8 28.4 19.2 32.2C15.8 28.6 10.4 28.6 6.5 32.5Z'/%3E%3Cpath d='M32 9V4.6M32 31.5L31.6 50.5C32 56.5 24.6 57 23.6 51.5' fill='none' stroke='%23000' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E");
+  --brand-eyes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%23fff'%3E%3Crect x='23.5' y='14' width='6' height='12' rx='3'/%3E%3Crect x='34.5' y='14' width='6' height='12' rx='3'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .brand-mark.small {
@@ -415,7 +430,7 @@ kbd {
   width: var(--control);
   height: var(--control);
   flex: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   color: var(--text-2);
   transition: background var(--duration-fast), color var(--duration-fast);
 }
@@ -433,7 +448,6 @@ kbd {
 .icon-button.tiny {
   width: var(--control-sm);
   height: var(--control-sm);
-  border-radius: var(--radius-xs);
 }
 
 .button {
@@ -442,8 +456,8 @@ kbd {
   justify-content: center;
   gap: 7px;
   height: var(--control);
-  padding: 0 14px;
-  border-radius: var(--radius-sm);
+  padding: 0 16px;
+  border-radius: var(--radius-full);
   font-weight: 550;
   font-size: var(--text-md);
   white-space: nowrap;
@@ -461,21 +475,20 @@ kbd {
 .button.primary {
   background: var(--accent);
   color: var(--text-inverse);
-  box-shadow: var(--shadow-sm);
 }
 
 .button.primary:hover:not(:disabled) {
   background: var(--accent-hover);
 }
 
+/* No outline (Umbrella §3.8): one tone down from what it sits on. */
 .button.secondary {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
 }
 
 .button.secondary:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-sunken) 100%, var(--text) 6%);
 }
 
 .button.ghost {
@@ -490,7 +503,6 @@ kbd {
 .button.danger {
   background: var(--danger);
   color: var(--text-inverse);
-  box-shadow: var(--shadow-sm);
 }
 
 .button.danger:hover:not(:disabled) {
@@ -505,9 +517,8 @@ kbd {
 
 .button.large {
   height: var(--control-lg);
-  padding: 0 20px;
+  padding: 0 22px;
   font-size: var(--text-lg);
-  border-radius: var(--radius-md);
 }
 
 .link-button {
@@ -563,10 +574,10 @@ kbd {
 
 .segmented {
   display: inline-flex;
-  padding: 2px;
+  padding: 3px;
   gap: 2px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-hover);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
 }
 
 .segmented button {
@@ -574,7 +585,7 @@ kbd {
   place-items: center;
   width: 28px;
   height: 24px;
-  border-radius: 5px;
+  border-radius: var(--radius-full);
   color: var(--text-3);
   transition: background var(--duration-fast), color var(--duration-fast);
 }
@@ -584,9 +595,8 @@ kbd {
 }
 
 .segmented button.active {
-  background: var(--surface);
+  background: var(--surface-raised);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
 }
 
 .spinner {
@@ -619,10 +629,10 @@ kbd {
 .pill {
   display: inline-flex;
   align-items: center;
-  height: 18px;
-  padding: 0 7px;
+  height: 20px;
+  padding: 0 8px;
   border-radius: var(--radius-full);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
@@ -658,12 +668,12 @@ kbd {
 .menu-popover {
   position: absolute;
   z-index: 40;
-  min-width: 184px;
-  padding: 5px;
-  border-radius: var(--radius-md);
+  min-width: 196px;
+  padding: 6px;
+  border-radius: var(--radius-xl);
   background: var(--glass-surface);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   animation: pop-in var(--duration-med) var(--ease-out);
@@ -714,8 +724,8 @@ kbd {
   gap: 9px;
   width: 100%;
   min-height: var(--row-h);
-  padding: 5px 9px;
-  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
   text-align: left;
   font-size: var(--text-md);
   color: var(--text);
@@ -893,8 +903,8 @@ kbd {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* Umbrella: the sidebar is the ground itself; the view beside it is a panel one tone up. */
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
   padding: 0 10px 8px;
   gap: 6px;
 }
@@ -1193,15 +1203,14 @@ kbd {
   align-items: center;
   gap: 8px;
   height: var(--control-lg);
-  padding: 0 4px 0 10px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-hover);
+  padding: 0 6px 0 14px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
   color: var(--text-3);
 }
 
 .sidebar-search:focus-within {
-  background: var(--surface);
-  box-shadow: 0 0 0 1px var(--border-strong);
+  background: var(--surface-raised);
 }
 
 .sidebar-search input {
@@ -1250,8 +1259,9 @@ kbd {
   background: var(--surface-hover);
 }
 
+/* The open session is lifted to the surface tone, the same step as the conversation panel beside it. */
 .session-item.active {
-  background: var(--surface-active);
+  background: var(--surface);
 }
 
 .session-button {
@@ -1352,7 +1362,6 @@ kbd {
   align-items: center;
   gap: 2px;
   padding-top: 6px;
-  border-top: 1px solid var(--border);
 }
 
 .sidebar-footer-button {
@@ -1421,7 +1430,8 @@ kbd {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--bg);
+  /* A panel one tone up from the ground the sidebar sits on (Umbrella §3.8): no edge between them. */
+  background: var(--surface);
   container: conversation / inline-size;
 }
 
@@ -1498,10 +1508,10 @@ kbd {
 .bg-task-stop { flex: none; margin-right: 4px; }
 .bg-task-links { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 6px 6px 37px; }
 .bg-task-link {
-  padding: 1px 7px; border: 1px solid var(--border); border-radius: var(--radius-full);
-  background: var(--surface); color: var(--accent-text); font: 11.5px/1.6 var(--font-mono); cursor: pointer;
+  padding: 1px 8px; border-radius: var(--radius-full);
+  background: var(--surface-sunken); color: var(--accent-text); font: var(--text-xs)/1.6 var(--font-mono); cursor: pointer;
 }
-.bg-task-link:hover { border-color: var(--border-strong); }
+.bg-task-link:hover { background: var(--surface-active); }
 .bg-task-output {
   max-height: 220px; margin: 0 6px 6px; padding: 8px 10px; overflow: auto;
   border-radius: var(--radius-xs); background: var(--code-bg); color: var(--text-2);
@@ -1826,7 +1836,7 @@ kbd {
 .conv-dock {
   flex: none;
   padding-bottom: 14px;
-  background: linear-gradient(to bottom, transparent, var(--bg) 22px);
+  background: linear-gradient(to bottom, transparent, var(--surface) 22px);
   margin-top: -22px;
   padding-top: 22px;
   position: relative;
@@ -1850,7 +1860,6 @@ kbd {
   margin-left: -16px;
   border-radius: 50%;
   background: var(--surface-raised);
-  border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
   color: var(--text-2);
   animation: pop-in var(--duration-med) var(--ease-out);
@@ -1948,8 +1957,9 @@ kbd {
 
 .welcome-starters .chip {
   height: var(--control);
-  padding: 0 12px;
-  border: 1px solid var(--border);
+  padding: 0 14px;
+  background: var(--surface-sunken);
+  color: var(--text-2);
   font-size: var(--text-md);
 }
 
@@ -2053,21 +2063,6 @@ kbd {
   text-align: center;
 }
 
-/* A faint glow of the palette's accent behind the cloud: light, not a block of colour. */
-.welcome-hero::before {
-  content: "";
-  position: absolute;
-  top: -70px;
-  left: 50%;
-  width: 420px;
-  height: 240px;
-  margin-left: -210px;
-  background: radial-gradient(closest-side, var(--accent-soft), transparent);
-  pointer-events: none;
-  z-index: -1;
-  animation: fade-up calc(var(--duration-med) * 5) var(--ease-out) both;
-}
-
 .welcome-beat {
   /* Each piece sets its own delay, a beat after the one above it. */
   animation: fade-up calc(var(--duration-med) * 2.5) var(--ease-out) both;
@@ -2088,14 +2083,14 @@ kbd {
   color: var(--text-3);
 }
 
-/* The cloud floats over its own soft shadow; the eyes blink and follow the pointer. */
-.welcome-cloud {
+/* The umbrella floats over its own soft shadow; the eyes blink and follow the pointer. */
+.welcome-umbrella {
   position: relative;
   width: 64px;
   height: 72px;
 }
 
-.welcome-cloud svg {
+.welcome-umbrella svg {
   display: block;
   width: 64px;
   height: 64px;
@@ -2103,46 +2098,29 @@ kbd {
   animation: welcome-float 6s ease-in-out infinite;
 }
 
-.welcome-cloud-body {
+.welcome-umbrella-body {
   fill: var(--accent);
 }
 
-.welcome-cloud-look {
+.welcome-umbrella-look {
   transform: translate(var(--look-x, 0), var(--look-y, 0));
   transition: transform var(--duration-med) var(--ease-out);
 }
 
-.welcome-cloud-eyes {
+.welcome-umbrella-eyes {
   transform-box: fill-box;
   transform-origin: center;
   /* The same blink as every agent avatar: idle life, not a state. */
   animation: av-blink 6s 1.2s infinite;
 }
 
-.welcome-cloud-shadow {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 44px;
-  height: 8px;
-  margin-left: -22px;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, var(--surface-active), transparent);
-  animation: welcome-shadow 6s ease-in-out infinite;
-}
-
 @keyframes welcome-float {
   50% { transform: translateY(-4px); }
 }
 
-@keyframes welcome-shadow {
-  50% { transform: scaleX(0.82); opacity: 0.7; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .welcome-cloud svg,
-  .welcome-cloud-shadow,
-  .welcome-cloud-eyes { animation: none; }
+  .welcome-umbrella svg,
+  .welcome-umbrella-eyes { animation: none; }
 }
 
 @media (max-height: 640px) {
@@ -2216,19 +2194,30 @@ kbd {
   animation: fade-up 260ms var(--ease-out);
 }
 
-/* Your message: a quiet bubble on the right, the same shape as in a Project. Line breaks come from
-   the Markdown (`breaks`), not from `pre-wrap`, which would also show the newlines between blocks
-   as empty lines. */
+/* Your message: an ink bubble on the right (Umbrella §5.1), the same shape as in a Project. Line breaks
+   come from the Markdown (`breaks`), not from `pre-wrap`, which would also show the newlines between
+   blocks as empty lines. */
 .user-bubble {
   max-width: min(84%, 620px);
-  padding: 8px 14px;
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
-  background: var(--surface-raised);
+  padding: 9px 16px;
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xs) var(--radius-xl);
+  background: var(--accent);
+  color: var(--text-inverse);
   overflow-wrap: anywhere;
+}
+
+.user-bubble .prose a,
+.user-bubble .prose code {
+  color: inherit;
+}
+
+.user-bubble .prose code {
+  background: color-mix(in srgb, var(--text-inverse) 16%, transparent);
 }
 
 .user-bubble .prose {
   line-height: 1.55;
+  color: inherit;
 }
 
 .user-bubble .prose p,
@@ -2261,16 +2250,13 @@ kbd {
   width: 120px;
   height: 84px;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
   background: var(--surface-active);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
   transition: transform var(--duration-fast), border-color var(--duration-fast);
 }
 
 .image-thumb:hover {
   transform: translateY(-1px);
-  border-color: var(--border-strong);
 }
 
 .image-thumb img {
@@ -2323,10 +2309,9 @@ kbd {
 
 .user-edit {
   width: min(100%, 640px);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--surface);
   border: 1px solid var(--border-focus);
-  box-shadow: 0 0 0 3px var(--accent-soft);
   padding: 10px 12px 8px;
 }
 
@@ -2483,8 +2468,8 @@ kbd {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
   font-size: var(--text-sm);
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -2748,10 +2733,8 @@ kbd {
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
 }
 
 .subagent-head {
@@ -2842,9 +2825,8 @@ kbd {
 }
 
 .files-card {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
   overflow: hidden;
   font-size: var(--text-sm);
 }
@@ -2971,9 +2953,8 @@ kbd {
 
 .slash-result {
   padding: 10px 14px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--surface-sunken);
-  border: 1px solid var(--border);
   font-size: var(--text-sm);
 }
 
@@ -3135,7 +3116,7 @@ kbd {
 
 .code-block {
   margin: 0 0 1em;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--code-bg);
   border: 1px solid var(--code-border);
   overflow: hidden;
@@ -3162,7 +3143,7 @@ kbd {
   gap: 5px;
   height: 24px;
   padding: 0 8px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-full);
   font-size: var(--text-xs);
   color: var(--text-3);
 }
@@ -3176,7 +3157,7 @@ kbd {
   margin: 0;
   padding: 12px 14px;
   overflow-x: auto;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   line-height: 1.6;
   max-height: 480px;
 }
@@ -3193,24 +3174,23 @@ kbd {
   position: relative;
 }
 
+/* One tone above the conversation panel, no edge and no shadow (Umbrella §3.8). The caret is the focus. */
 .composer-box {
-  border-radius: var(--radius-xl);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-md);
-  padding: 12px 12px 8px 16px;
+  border-radius: var(--radius-2xl);
+  background: var(--surface-raised);
+  border: 0;
+  padding: 14px 12px 10px 18px;
   cursor: text;
-  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+  outline: 1.5px solid transparent;
+  outline-offset: 0;
+  transition: outline-color var(--duration-fast), background var(--duration-fast);
 }
 
-.composer-box:focus-within {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md), 0 0 0 4px var(--accent-soft);
-}
+
 
 .composer-box.is-dropping {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-md), 0 0 0 4px var(--accent-soft);
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
 }
 
 .composer-attachments {
@@ -3226,8 +3206,7 @@ kbd {
   position: relative;
   width: 56px;
   height: 56px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   background: var(--surface-active);
   overflow: hidden;
 }
@@ -3527,12 +3506,12 @@ kbd {
 
 /* --- approvals & plan -------------------------------------------------- */
 
+/* Needs you: raised one tone above the conversation, no edge, no glow. The pen loop in the head is the
+   one attention mark on screen (Umbrella §3.9). */
 .approval-card {
-  padding: 12px 14px;
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
-  box-shadow: 0 0 0 4px var(--warn-soft), var(--shadow-md);
+  padding: 14px 18px;
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
   animation: fade-up 220ms var(--ease-out);
 }
 
@@ -3543,19 +3522,19 @@ kbd {
   font-size: var(--text-md);
 }
 
-.approval-head svg {
-  color: var(--warn);
+.approval-head .pen-mark {
+  color: var(--pen);
 }
 
 .approval-input {
   margin: 10px 0 0;
   max-height: 160px;
   overflow: auto;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
   background: var(--code-bg);
   border: 1px solid var(--code-border);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -3572,10 +3551,8 @@ kbd {
 }
 
 .plan-panel {
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
   overflow: hidden;
 }
 
@@ -3630,6 +3607,7 @@ kbd {
   color: var(--text);
 }
 
+/* The hand layer marks each step: a thin ring to do, a tick when done, a cross when it failed (§3.9). */
 .plan-check {
   display: grid;
   place-items: center;
@@ -3637,8 +3615,6 @@ kbd {
   height: 16px;
   margin-top: 2px;
   flex: none;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-strong);
 }
 
 .plan-item.status-done {
@@ -3650,17 +3626,7 @@ kbd {
   text-decoration-color: var(--text-3);
 }
 
-.plan-item.status-done .plan-check {
-  background: var(--success);
-  border-color: var(--success);
-  color: var(--text-inverse);
-}
 
-.plan-item.status-failed .plan-check {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: var(--text-inverse);
-}
 
 .plan-detail {
   display: block;
@@ -3698,9 +3664,8 @@ kbd {
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-2xl);
   background: var(--surface-raised);
-  border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
   animation: pop-in 240ms var(--ease-out);
 }
@@ -3875,21 +3840,20 @@ kbd {
   gap: 7px;
   height: var(--control);
   padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
   color: var(--text-2);
 }
 
-.settings-choice:hover:not(:disabled) {
-  border-color: var(--border-strong);
+.settings-choice:hover:not(:disabled):not(.active) {
+  background: var(--surface-active);
   color: var(--text);
 }
 
+/* The chosen option is solid ink: the one filled pill in the row. */
 .settings-choice.active {
-  border-color: var(--border-strong);
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 .palette-grid {
@@ -3903,20 +3867,20 @@ kbd {
   flex-direction: column;
   gap: 2px;
   padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--text);
   text-align: left;
 }
 
 .palette-card:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  background: var(--surface-hover);
 }
 
+/* Chosen: the ink ring, like the chosen pill beside it is solid ink. */
 .palette-card.active {
-  border-color: var(--border-strong);
   background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
 .palette-swatch {
@@ -3924,8 +3888,7 @@ kbd {
   grid-template-columns: 1fr 1fr;
   overflow: hidden;
   margin-bottom: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 /* Each half carries its own data-palette/data-theme, so it draws that palette's real tokens. */
@@ -4024,17 +3987,18 @@ kbd {
   color: var(--text-2);
 }
 
+/* Fields have no outline (Umbrella §3.8): one tone below the dialog or panel they sit in. */
 .field input,
 .field select,
 .input-with-icon {
   height: var(--control-lg);
   width: 100%;
-  padding: 0 11px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background-color: var(--surface);
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  background-color: var(--surface-sunken);
   outline: 0;
-  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+  transition: background-color var(--duration-fast), outline-color var(--duration-fast);
 }
 
 .field select {
@@ -4045,20 +4009,20 @@ kbd {
 .field select:focus,
 .field textarea:focus,
 .input-with-icon:focus-within {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 
-/* A multi-line field: the same border, surface and focus halo as a one-line input. */
+/* A multi-line field: the same fill, shape and focus ring as a one-line input. */
 .field textarea {
   display: block;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding: 9px 11px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background-color: var(--surface);
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  background-color: var(--surface-sunken);
   color: var(--text);
   line-height: 1.5;
   resize: vertical;
@@ -4067,7 +4031,7 @@ kbd {
 }
 
 .field textarea:hover:not(:disabled):not(:focus) {
-  border-color: var(--border-strong);
+  background-color: color-mix(in srgb, var(--surface-sunken) 100%, var(--text) 4%);
 }
 
 .field textarea:disabled {
@@ -4110,9 +4074,8 @@ kbd {
   display: grid;
   gap: 4px;
   padding: 12px 14px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--surface-sunken);
-  border: 1px solid var(--border);
 }
 
 .effective-row {
@@ -4202,21 +4165,22 @@ kbd {
   }
 }
 .question-panel { display: grid; gap: 10px; max-height: min(48vh, 420px); overflow-y: auto; }
-.question-card { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
+/* Needs you: raised one tone, no edge; the pen loop in the head is the attention mark (§3.9). */
+.question-card { padding: 14px 18px; border-radius: var(--radius-xl); background: var(--surface-raised); }
 .question-head { display: flex; align-items: center; gap: 8px; font-size: var(--text-md); flex-wrap: wrap; }
-.question-head svg { color: var(--accent); }
+.question-head .pen-mark { color: var(--pen); }
 .question-mode { margin-left: auto; color: var(--text-3); font-size: var(--text-xs); }
 .question-body { display: grid; gap: 14px; margin-top: 12px; }
 .question-item { border: 0; padding: 0; margin: 0; min-width: 0; }
 .question-item legend { margin-bottom: 8px; font-size: var(--text-md); line-height: 1.5; }
 .question-options { display: grid; gap: 6px; margin-bottom: 8px; }
-.question-option { display: flex; gap: 9px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-sm); }
-.question-option:hover { background: var(--surface-hover); }
-.question-option.selected { border-color: var(--border-strong); background: var(--accent-soft); }
+.question-option { display: flex; gap: 9px; padding: 9px 12px; border-radius: var(--radius-lg); background: var(--surface); cursor: pointer; font-size: var(--text-sm); }
+.question-option:hover { background: var(--surface-sunken); }
+.question-option.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .question-option input { accent-color: var(--accent); margin-top: 3px; }
 .question-description { display: block; margin-top: 3px; color: var(--text-2); line-height: 1.5; }
 .question-clear { margin-bottom: 8px; }
-.question-text { display: block; width: 100%; resize: vertical; min-height: 56px; max-height: 180px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--text); font: inherit; font-size: var(--text-sm); }
+.question-text { display: block; width: 100%; resize: vertical; min-height: 56px; max-height: 180px; padding: 9px 12px; border: 0; border-radius: var(--radius-lg); background: var(--surface); color: var(--text); font: inherit; font-size: var(--text-sm); }
 .question-text:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
 .question-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .question-actions .muted { flex: 1; }
@@ -4278,16 +4242,15 @@ kbd {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
   color: inherit;
   text-align: left;
   cursor: pointer;
 }
 
 .office-file:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  background: var(--surface-hover);
 }
 
 .office-file-icon {
@@ -4352,7 +4315,6 @@ kbd {
   display: block;
   max-width: 100%;
   padding: 0;
-  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface-sunken);
   overflow: hidden;
@@ -4361,7 +4323,7 @@ kbd {
 }
 
 .reply-image:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  opacity: 0.92;
 }
 
 .reply-image img {
@@ -4383,10 +4345,8 @@ kbd {
   display: grid;
   gap: var(--space-3);
   padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
 }
 
 .a2ui-title {
@@ -4420,9 +4380,9 @@ kbd {
 }
 
 .a2ui-card {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
 }
 
 .a2ui-text {
@@ -4756,8 +4716,8 @@ kbd {
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
 }
 
 .zoom-controls .icon-button {
@@ -4872,8 +4832,8 @@ kbd {
 
 .browser-address input:focus {
   text-align: left;
-  border-color: var(--border-strong);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 
 .browser-card {
@@ -4881,8 +4841,7 @@ kbd {
   display: flex;
   flex: 1;
   min-height: 0;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
   background: var(--surface);
   overflow: hidden;
 }
@@ -5213,14 +5172,12 @@ button.composer-file:hover {
   align-items: center;
   gap: 8px 10px;
   padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 
-/* Selected, not shouted: a firmer hairline and a soft fill. An --accent ring is ink on Carbon and reads as a bold frame. */
+/* Selected, not shouted: a soft fill and nothing else (Umbrella §3.8). */
 .model-route.is-default {
-  border-color: var(--border-strong);
   background: var(--accent-soft);
 }
 
@@ -5351,42 +5308,86 @@ button.composer-file:hover {
 }
 
 /* ==========================================================================
-   Status light — a thread's or project's weather in one dot (tnega-design §5.7)
+   Hand layer — pen marks (tnega-design §3.9) and the status light built on them (§5.7)
    ========================================================================== */
 
-.status-light {
+.pen-mark {
   flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
+  display: block;
+  overflow: visible;
+  color: var(--pen);
 }
 
-.status-light.light-waiting {
-  background: var(--warn);
-  box-shadow: 0 0 0 3px var(--warn-soft);
+.pen-mark .pen-stroke {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.status-light.light-failed {
-  background: var(--danger);
-  box-shadow: 0 0 0 3px var(--danger-soft);
+.pen-mark .pen-fill {
+  fill: currentColor;
 }
 
-.status-light.light-working {
-  background: var(--accent);
-  animation: status-light-pulse 1.6s var(--ease-out) infinite;
+.pen-mark .pen-thin {
+  stroke-width: 1.3;
 }
 
-.status-light.light-ready {
-  background: var(--success);
+.pen-mark .pen-bold {
+  stroke-width: 2.3;
 }
 
-@keyframes status-light-pulse {
-  50% { opacity: 0.4; }
+.pen-mark .pen-dashed {
+  stroke-dasharray: 2.6 3;
+}
+
+.pen-mark.pen-small .pen-stroke {
+  stroke-width: 1.7;
+}
+
+.pen-mark.pen-small .pen-bold {
+  stroke-width: 2.1;
+}
+
+.pen-mark.pen-failed {
+  color: var(--danger);
+}
+
+.pen-mark.pen-idle {
+  color: var(--text-3);
+}
+
+/* A new mark is drawn once, like a pen stroke; scrolling and re-renders never redraw it. */
+.pen-mark .pen-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: pen-draw var(--pen-draw) var(--ease-out) both;
+}
+
+@keyframes pen-draw {
+  from { stroke-dashoffset: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status-light.light-working { animation: none; }
+  .pen-mark .pen-draw { animation: none; }
+}
+
+/* Words the agent underlined for you (one place per screen at most). */
+.pen-underline {
+  text-decoration: underline;
+  text-decoration-color: var(--pen);
+  text-decoration-thickness: 2px;
+  text-decoration-style: wavy;
+  text-underline-offset: 4px;
+  text-decoration-skip-ink: none;
+}
+
+.status-light {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--pen);
 }
 
 /* ==========================================================================
@@ -5454,10 +5455,8 @@ button.composer-file:hover {
 /* Messages typed while the agent runs: held for after the run, or steered in now. */
 .queued-panel {
   min-width: 0;
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-xl);
+  background: var(--surface-raised);
   overflow: hidden;
 }
 
@@ -5587,12 +5586,12 @@ button.composer-file:hover {
 .ctx-heatmap .usage-day { width: 100%; height: auto; aspect-ratio: 1; min-width: 0; }
 .ctx-heatmap .usage-day:disabled { cursor: default; }
 .ctx-session-filters { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.ctx-search { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 200px; height: var(--control); padding: 0 var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-3); }
-.ctx-search:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ctx-search { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 200px; height: var(--control); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-full); background: var(--surface-sunken); color: var(--text-3); }
+.ctx-search:focus-within { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 .ctx-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--text-md); box-shadow: none; outline: none; }
 .ctx-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
-.ctx-card { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); text-align: left; transition: border-color var(--duration-fast), background var(--duration-fast); }
-.ctx-card:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-hover); }
+.ctx-card { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--radius-xl); background: var(--surface); color: var(--text); text-align: left; transition: border-color var(--duration-fast), background var(--duration-fast); }
+.ctx-card:hover:not(:disabled) { background: var(--surface-hover); }
 .ctx-card:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
 .ctx-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); min-width: 0; }
 .ctx-card-title { overflow: hidden; font-size: var(--text-md); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
