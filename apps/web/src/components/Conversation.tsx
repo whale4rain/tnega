@@ -1,7 +1,6 @@
 import { completionObserver, notifyDesktopWaiting } from '../lib/desktop-completion'
 import {
   ArrowDown,
-  Check,
   Copy,
   Link,
   ChevronDown,
@@ -11,7 +10,6 @@ import {
   MoreHorizontal,
   Pencil,
   Shrink,
-  ShieldQuestion,
   Target,
   Trash2,
   X,
@@ -56,6 +54,7 @@ import type { ArgumentSuggestion } from './PromptBox'
 import { Menu } from './Menu'
 import { Timeline, type TimelineActions, type TimelineAgent, type TimelineSky } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
+import { PenMark } from './PenMark'
 import { QueuedMessages, type QueuedMessage } from './QueuedMessages'
 import { BackgroundJobs } from './BackgroundJobs'
 import { LinkContext, type LinkHandlers } from '../lib/links'
@@ -1271,7 +1270,7 @@ export function ApprovalCard({ approval, onAnswer }: { approval: Approval; onAns
   return (
     <div className="approval-card" role="alertdialog" aria-label="Permission request">
       <div className="approval-head">
-        <ShieldQuestion size={14} />
+        <PenMark kind="you" size={20} />
         {approval.grant
           ? <span>The agent wants to <strong>{approval.grant.label}</strong></span>
           : <span>The agent wants to use <strong>{approval.tool}</strong>{approval.via === 'run_code' ? ' from a CodeMode script' : ''}</span>}
@@ -1354,7 +1353,7 @@ function PlanRow({ item }: { item: PlanItem }) {
   return (
     <li className={`plan-item status-${item.status}`}>
       <span className="plan-check">
-        {item.status === 'done' ? <Check size={12} strokeWidth={3} /> : item.status === 'failed' ? <X size={12} strokeWidth={3} /> : null}
+        <PenMark kind={item.status === 'done' ? 'done' : item.status === 'failed' ? 'failed' : 'idle'} size={16} label={item.status === 'pending' ? undefined : item.status} />
       </span>
       <span>
         {item.title}

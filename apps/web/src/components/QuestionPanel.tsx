@@ -1,4 +1,5 @@
-import { Eye, EyeOff, KeyRound, MessageCircleQuestion } from 'lucide-react'
+import { Eye, EyeOff, KeyRound } from 'lucide-react'
+import { PenMark } from './PenMark'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { notifyDesktopWaiting } from '../lib/desktop-completion'
@@ -96,7 +97,7 @@ export function QuestionCard({ request, onAnswer }: {
   return (
     <form className="question-card" aria-label="会话问题" onSubmit={event => { event.preventDefault(); void submit() }}>
       <div className="question-head">
-        <MessageCircleQuestion size={14} />
+        <PenMark kind="you" size={20} />
         <strong>需要你的意见</strong>
         <span className="question-mode">{request.mode === 'blocking' ? '正在等待回答' : '继续执行中 · 回答会作为补充指示'}</span>
       </div>
