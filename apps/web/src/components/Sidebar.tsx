@@ -383,7 +383,7 @@ export function Sidebar({
     <aside className={`sidebar${open ? '' : ' is-closed'}`} aria-label="Workspaces" aria-hidden={!open || undefined} inert={!open}>
       <div className="sidebar-top">
         <div className="brand">
-          <span className="brand-mark" aria-hidden />
+          <span className="brand-mark disc" aria-hidden />
           <span className="brand-name">tnega</span>
         </div>
         <span className="sidebar-top-actions">

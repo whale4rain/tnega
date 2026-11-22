@@ -2,7 +2,7 @@
 
 日期：2026-10-01。总规范见 [`tnega-design.md`](tnega-design.md)。
 
-Tnega 的 Agent 是一朵小云。原有的形象语言不变——一块扁平、饱和的软形状加两只白眼睛——天气是叠在它之上的第二层语言：**云周围的天在做什么，就是 Agent 在做什么**。品牌标志就是这朵带眼睛的云。
+Tnega 的主 Agent 是一把带眼睛的伞（子 Agent 仍是扁平、饱和的软形状加两只白眼睛）。天气是叠在它之上的第二层语言：**伞周围的天在做什么，就是 Agent 在做什么**。品牌标志就是这把带眼睛的伞（见 `tnega-design.md` §2）。
 
 ## 原则
 
@@ -30,7 +30,7 @@ Tnega 的 Agent 是一朵小云。原有的形象语言不变——一块扁平�
 
 实现：`apps/web/src/lib/weather.ts`（映射与优先级）、`components/WeatherLayer.tsx`（图形）、`components/AgentAvatar.tsx`（叠加与表情）、`styles/project.css`（动效）。开发服务的 `/weather.html` 是校准页：每种天气在 72px、26px、20px 与深浅主题下的样子。
 
-会话主 Agent 与 Project 协调者都画成强调色的云；Thread 与子 Agent 保留原来的随机形状与颜色，天气同样适用于它们。
+会话主 Agent 与 Project 协调者都画成墨色的伞（放在 `--disc` 灰圆片上）；Thread 与子 Agent 保留原来的随机形状与颜色，天气同样适用于它们。
 
 ## 配色：天空
 

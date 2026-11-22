@@ -16,6 +16,7 @@ import {
 import { useEffect, useId, useRef, type CSSProperties } from 'react'
 import { relativeTime } from '../lib/hooks'
 import type { AgentType, SessionSummary } from '../lib/types'
+import { UMBRELLA_CANOPY, UMBRELLA_SHAFT } from '../lib/avatar'
 import { eyeOffset, recentSessions, welcomeGreeting } from '../lib/welcome'
 
 interface Starter {
@@ -53,15 +54,14 @@ function beat(index: number): CSSProperties {
 }
 
 /**
- * The brand cloud, alive: it floats, blinks now and then, and its eyes follow
- * the pointer. Same drawing as `--brand-cloud` / `--brand-eyes` in app.css (the
- * eyes are cut out of the cloud, so they show the page behind it in every palette);
+ * The brand umbrella, alive: it floats, blinks now and then, and its eyes follow
+ * the pointer. Same drawing as `--brand-umbrella` / `--brand-eyes` in app.css (the
+ * eyes are cut out of the canopy, so they show the page behind it in every palette);
  * change them together. Still when reduced motion is asked for.
  */
-export function WelcomeCloud() {
+export function WelcomeUmbrella() {
   const svg = useRef<SVGSVGElement>(null)
-  const mask = `welcome-cloud-${useId().replace(/:/g, '')}`
-
+  const mask = `welcome-umbrella-${useId().replace(/:/g, '')}`
   useEffect(() => {
     const node = svg.current
     if (!node || typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
@@ -89,36 +89,31 @@ export function WelcomeCloud() {
   }, [])
 
   return (
-    <div className="welcome-cloud" aria-hidden>
+    <div className="welcome-umbrella" aria-hidden>
       <svg ref={svg} viewBox="0 0 64 64" focusable="false">
         <mask id={mask}>
-          <g fill="white">
-            <circle cx="32" cy="23" r="16" />
-            <circle cx="18" cy="34" r="14" />
-            <circle cx="46" cy="34" r="14" />
-            <circle cx="24" cy="46" r="13" />
-            <circle cx="40" cy="46" r="13" />
-          </g>
-          <g className="welcome-cloud-look">
-            <g className="welcome-cloud-eyes" fill="black">
-              <rect x="20.8" y="23.5" width="8.4" height="17" rx="4.2" />
-              <rect x="34.8" y="23.5" width="8.4" height="17" rx="4.2" />
+          <path d={UMBRELLA_CANOPY} fill="white" />
+          <path d={UMBRELLA_SHAFT} fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" />
+          <g className="welcome-umbrella-look">
+            <g className="welcome-umbrella-eyes" fill="black">
+              <rect x="23.5" y="14" width="6" height="12" rx="3" />
+              <rect x="34.5" y="14" width="6" height="12" rx="3" />
             </g>
           </g>
         </mask>
-        <rect className="welcome-cloud-body" width="64" height="64" mask={`url(#${mask})`} />
+        <rect className="welcome-umbrella-body" width="64" height="64" mask={`url(#${mask})`} />
       </svg>
-      <span className="welcome-cloud-shadow" />
+      <span className="welcome-umbrella-shadow" />
     </div>
   )
 }
 
-/** The top of an empty session: the cloud and one line of greeting. */
+/** The top of an empty session: the umbrella and one line of greeting. */
 export function WelcomeHero({ agentType, now = new Date() }: { agentType: AgentType; now?: Date }) {
   const { hello, ask } = welcomeGreeting(now.getHours(), agentType)
   return (
     <div className="welcome-hero">
-      <div className="welcome-beat" style={beat(0)}><WelcomeCloud /></div>
+      <div className="welcome-beat" style={beat(0)}><WelcomeUmbrella /></div>
       <h2 className="welcome-greeting welcome-beat" style={beat(1)}>
         <span>{hello}</span> <span className="welcome-ask">{ask}</span>
       </h2>

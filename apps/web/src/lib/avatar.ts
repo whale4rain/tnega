@@ -4,11 +4,13 @@
  * where the eyes look. Nothing else.
  *
  * Every agent id maps to a stable avatar; the main agent (a session's own
- * agent, or a Project coordinator) is an accent cloud — Tnega's weather
- * language starts from it. Users can reroll an avatar; the choice is a salt in localStorage.
+ * agent, or a Project coordinator) is the brand umbrella in ink on the grey
+ * disc — the weather falls on it. Sub-agents keep random shapes and colours
+ * so they tell apart. Users can reroll an avatar; the choice is a salt in localStorage.
  */
 
-export type Shape = 'circle' | 'rounded' | 'tilted' | 'gumdrop' | 'cloud' | 'drop'
+/** `umbrella` is the main agent's alone; sub-agents pick from `SHAPES`. */
+export type Shape = 'circle' | 'rounded' | 'tilted' | 'gumdrop' | 'cloud' | 'drop' | 'umbrella'
 export type EyeStyle = 'pill' | 'dot'
 
 export interface AvatarSpec {
@@ -39,6 +41,11 @@ export const COLORS: readonly string[] = [
 ]
 
 export const ACCENT = 'accent'
+
+/** The umbrella's canopy, in the 64×64 brand viewBox: a dome with a scalloped hem. */
+export const UMBRELLA_CANOPY = 'M6.5 32.5C7.5 17.5 18.5 8.5 32 8.5S56.5 17.5 57.5 31.5C53.5 28.2 48.2 28.4 44.8 32.2C41.2 28.4 35.6 28.4 32 32.4C28.4 28.4 22.8 28.4 19.2 32.2C15.8 28.6 10.4 28.6 6.5 32.5Z'
+/** The tip and the shaft with its J hook, drawn as one round-capped stroke 4 wide. */
+export const UMBRELLA_SHAFT = 'M32 9V4.6M32 31.5L31.6 50.5C32 56.5 24.6 57 23.6 51.5'
 
 export const SHAPES: readonly Shape[] = ['circle', 'rounded', 'tilted', 'gumdrop', 'cloud', 'drop']
 
@@ -71,19 +78,14 @@ function between(next: () => number, min: number, max: number): number {
   return Math.round((min + next() * (max - min)) * 2) / 2
 }
 
-/**
- * Colours a coordinator may take: the brand accent and the bright palette.
- * The cloud shape is what marks the coordinator; the colour tells projects apart.
- */
-export const COORDINATOR_COLORS: readonly string[] = [ACCENT, ...COLORS.filter(color => color !== 'ink' && color !== '#6e7781')]
-
 export function avatarSpec(seed: string, role: 'coordinator' | 'agent' = 'agent'): AvatarSpec {
   const next = random(hash(`${role}:${seed}`))
   const coordinator = role === 'coordinator'
-  const shape: Shape = coordinator ? 'cloud' : pick(next, SHAPES)
+  const shape: Shape = coordinator ? 'umbrella' : pick(next, SHAPES)
   return {
     shape,
-    color: pick(next, coordinator ? COORDINATOR_COLORS : COLORS),
+    // The main agent is always the ink umbrella; its gaze still varies with the seed.
+    color: coordinator ? ACCENT : pick(next, COLORS),
     eyes: next() < 0.62 ? 'pill' : 'dot',
     gazeX: between(next, -5, 5),
     gazeY: between(next, -3, 1),
