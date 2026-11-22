@@ -40,7 +40,7 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 
 ## 界面设计
 
-- **所有前端开发（`apps/web`、`apps/desktop` 渲染层、`packages/tui`）都以 `docs/design/tnega-design.md` 为准。** 动手前按其 §0 的对照表读相关章节，提交前过一遍其 §11 清单；要改变设计时，在同一次改动里先改规范再改代码。天气状态语言见 `docs/design/weather-language.md`。
+- **所有前端开发（`apps/web`、`apps/desktop` 渲染层、`packages/tui`）都以 `docs/design/tnega-design.md` 为准；Umbrella 各组件的详细规范在 `docs/design/umbrella/`，改某个组件前先读对应文件。** 动手前按其 §0 的对照表读相关章节，提交前过一遍其 §11 清单；要改变设计时，在同一次改动里先改规范再改代码。天气状态语言见 `docs/design/weather-language.md`。
 - 外观分两个轴：`data-theme`（浅 / 深）与 `data-palette`（默认 Umbrella，另有 Carbon / Sky / Sand / Forest / Graphite）；信息显示偏好（密度、字号、对话宽度）也是根元素属性，见 `apps/web/src/lib/display.ts` 与规范 §6。组件只用 token，不读这些偏好再分支。
 - 颜色只来自 `apps/web/src/styles/tokens.css`，组件不写裸色值；字号只用 `--text-*`、控件与行高只用密度 token。每个调色板的深浅两份同步修改，并通过 `apps/web/src/styles/contrast.test.ts` 的对比度底线（正文 ≥7:1，所有文字角色在所有面上 ≥4.5:1）。
 - Agent 的状态用天气表达，一种天气只有一个含义（见 `apps/web/src/lib/weather.ts`）；新增状态先归入已有天气，不给同一天气赋第二个含义；动效遵循 `prefers-reduced-motion`。
