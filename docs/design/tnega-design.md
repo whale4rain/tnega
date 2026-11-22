@@ -91,7 +91,7 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。2026-11-22 起�
 | 笔 | `--pen` | 手绘层的笔迹（§3.9） | 排版层的线、边框、文字 |
 
 - 颜色从不单独承载含义：状态色旁边总有文字或图标（§10）。
-- **选中不描强调色**（2026-10-12 起）：选中的卡片或选项（打开中的 Thread 卡、默认模型路由、调色板、设置选项、问题选项）用 `--border-strong` 描边加 `--accent-soft` 底；工作台的拖动条悬停时是 `--border-strong` 细线。Carbon 的 `--accent` 是墨色（深色下近白），一圈强调色描边读作粗白框 / 粗黑框，压过了内容。焦点环仍用 `--border-focus`。
+- **选中不描强调色**（2026-10-12 起，2026-11-22 随 Umbrella 修订）：选中的卡片或选项（打开中的 Thread 卡、默认模型路由、设置选项）只换成 `--accent-soft` 底，不加描边；调色板卡与问题选项这类需要和邻居并排比较的，再加一圈 1.5px 的内嵌墨色环（`inset box-shadow`，不占布局）；工作台的拖动条悬停时是 `--border-strong` 细线。Carbon 的 `--accent` 是墨色（深色下近白），一圈强调色描边读作粗白框 / 粗黑框，压过了内容。焦点环仍用 `--border-focus`。
 - 需要中间色时用 `color-mix(in srgb, var(--a) N%, var(--b))`，两端都必须是 token；`--usage-*` 就是这样派生的，它们会自动跟随调色板。
 - 阴影只给浮层与对话框（`--shadow-md` / `--shadow-lg`；`--shadow-sm` 是 none）；页面内的层级靠色调（§3.8），深色模式下靠明度（§3.5）。
 - **浮层外壳是玻璃**（2026-10-16 起）：菜单、`/` 面板、上下文用量气泡、表情菜单，以及对话框遮罩，用 `--glass-surface`（`--surface-raised` 以 `--glass-alpha` = 0.8 叠在底下）+ `backdrop-filter: blur(12px) saturate(1.4)`（`--glass-blur` / `--glass-saturate`），背后的画面透上来但不挡住内容。α 就是这笔交易的价码：0.8 时材质一眼可见，而且**对着本应用自己会画在浮层后面的每一张面**（`bg`、`bg-sidebar`、`surface`、`surface-raised`、`surface-sunken`、`code-bg`）正文仍 ≥7:1、其余角色仍 ≥4.5:1，由 `apps/web/src/styles/glass.test.ts` 逐个调色板检查。代价写在这里不藏起来：浮层压在一张照片、浏览器视图或别的窗口上时，正文可能降到约 6.5:1、三级文字约 2.7:1。
@@ -151,8 +151,8 @@ Sky 写在基础选择器里，是其他调色板覆盖的底；2026-11-22 起�
 
 | 调色板 · 模式 | `--bg` | `--surface` | `--text` | `--text-3` | `--accent-text` | `--success` / `--warn` / `--danger` |
 | --- | --- | --- | --- | --- | --- | --- |
-| Umbrella 浅 | `#ececec` | `#f7f7f7` | `#0e0e0e` | `#545457` | `#1c1c1e` | `#1f6a3a` / `#7a4c00` / `#a62b25` |
-| Umbrella 深 | `#161617` | `#1f1f21` | `#ececec` | `#9d9da1` | `#e0e0e0` | `#84d4a2` / `#eec070` / `#f58e86` |
+| Umbrella 浅 | `#f4f4f4` | `#ffffff` | `#0e0e0e` | `#545457` | `#1c1c1e` | `#1f6a3a` / `#7a4c00` / `#a62b25` |
+| Umbrella 深 | `#1b1b1d` | `#242426` | `#ececec` | `#9d9da1` | `#e0e0e0` | `#84d4a2` / `#eec070` / `#f58e86` |
 | Carbon 浅 | `#f7f7f6` | `#ffffff` | `#161616` | `#5e5e5c` | `#2a2a29` | `#24713f` / `#855400` / `#b5302b` |
 | Carbon 深 | `#191919` | `#212121` | `#ededec` | `#9c9c9a` | `#dededc` | `#84d4a2` / `#eec070` / `#f58e86` |
 | Sand 浅 | `#f6f3ee` | `#fffdf9` | `#27221b` | `#6a6155` | `#93441f` | `#3b7340` / `#8a5a0c` / `#b2382f` |
@@ -200,13 +200,13 @@ Sky 写在基础选择器里，是其他调色板覆盖的底；2026-11-22 起�
 
 形状与表面规则不随调色板变：换调色板只换颜色，Umbrella 的形状、无阴影与手绘层在每一个调色板里都成立。
 
-**层级靠色调，不靠描边和阴影。** 由远及近：`--bg`（地面）→ `--surface`（面板、卡片、对话列）→ `--surface-raised`（输入框、浮层、对话框、需要你处理的卡片）。相邻两层之间只有色调差，**不画外框**。
+**层级靠色调，不靠描边和阴影。** 由远及近：`--bg-sidebar`（地面：侧栏、工作台外框）→ `--bg`（面板：对话列、工作台里的阅读面）→ `--surface`（卡片：工具结果、Thread 卡、工作台里的卡片）→ `--surface-raised`（composer、浮层、对话框、需要你处理的卡片）。表单字段反过来下沉一层，用 `--surface-sunken`。相邻两层之间只有色调差，**不画外框**。
 
 | 东西 | 形状 | 表面 | 边 |
 | --- | --- | --- | --- |
-| 面板（对话列、工作台卡片、侧栏里的分组） | `--radius-2xl`（22px） | `--surface` | 无 |
+| 面板（对话列、工作台外框 `.wb-frame`） | `--radius-2xl`（22px） | 对话列 `--bg`；工作台外框 `--bg-sidebar`，里面的阅读面 `--bg` | 无 |
 | 卡片（工具结果、产物、提示、设置里的分组） | `--radius-xl`（16px） | `--surface` 或 `--surface-raised` | 无；只在同色调相邻、无法靠色调分开时用 `--border` 细线 |
-| 输入框、composer | `--radius-2xl`（composer）/ `--radius-lg`（表单字段） | 比它所在的面高一层：放在地面或面板上用 `--surface-raised`，放在浮层或对话框里用 `--surface-sunken` | 无；悬停时底色加深一档，焦点用焦点环 |
+| 输入框、composer | `--radius-2xl`（composer）/ `--radius-lg`（表单字段）/ 胶囊（搜索框） | composer 用 `--surface-raised`；表单字段、搜索框、问题选项用 `--surface-sunken` | 无；悬停时底色加深一档，焦点用 2px 焦点环 |
 | 按钮 | 胶囊（`--radius-full`） | 主按钮实心墨色（`--accent`）；次按钮 `--surface-sunken`；幽灵按钮无底 | 无 |
 | 浮层（菜单、`/` 面板、下拉） | `--radius-xl` | `--surface-raised` | `--border` 细线 + `--shadow-md`（唯一用阴影的地方，因为它压在内容上） |
 | 对话框 | `--radius-2xl` | `--surface-raised` | 无边，`--shadow-lg` |
@@ -283,7 +283,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **密钥问题**（2026-10-26 起）：Agent 用 `ask_user_question` 的 `secret`（环境变量名，如 `GITHUB_TOKEN`）要密钥时，问题卡里是一行**隐藏输入**（复用 `.input-with-icon`：`KeyRound` 图标 · `password` 输入框，等宽字体 · 显示 / 隐藏的 `.icon-button.tiny`，`aria-pressed`），没有选项与补充文本框。下面一行 `.muted.small` 写去向（“只在这个会话里使用……命令里用 `$NAME` 读取”），右侧是 **记住** 按钮（`.button.ghost.small`，`aria-pressed`，按下时 `--accent-soft` 底、`--accent-text` 字）：按下则保存到这个工作区（重启后同一工作区的会话都能用），说明文字随之改写。值只交给宿主的密钥库，不进 Session、不回到时间线；Agent 只知道名字。设置里的 **Secrets** 分区（§9）列出名字并可移除。
 
 - **新会话的欢迎**（2026-11-12 起，`components/Welcome.tsx`；**字要少**，只有云、一句问候、输入框和一排起手式）：会话还没有消息时，`.conversation` 加 `is-welcome`，**问候与输入框在页面中间相遇**；第一条消息发出后回到“时间线在上、输入区在下”。从上到下：
-  - **活的云**（`WelcomeCloud`）：64px 的品牌云（与 `--brand-cloud` / `--brand-eyes` 同一画法，眼睛镂空），缓慢浮动，下方柔和投影随之伸缩；和所有头像一样偶尔眨眼（`av-blink`）；眼睛跟着指针看（最多偏 3 个单位，不出云）。这是空闲的生气，不是天气：欢迎页不画天气。背后一团很淡的 `--accent-soft` 径向光，不是色块。`prefers-reduced-motion` 下不动。首次打开的欢迎页（没有工作区时）用同一朵云。
+  - **活的伞**（`WelcomeUmbrella`）：64px 的品牌伞（与 `--brand-umbrella` / `--brand-eyes` 同一画法，眼睛从伞面镂空），缓慢浮动，下方柔和投影随之伸缩；和所有头像一样偶尔眨眼（`av-blink`）；眼睛跟着指针看（最多偏 3 个单位，不出伞面）。这是空闲的生气，不是天气：欢迎页不画天气。背后一团很淡的 `--accent-soft` 径向光，不是色块。`prefers-reduced-motion` 下不动。首次打开的欢迎页（没有工作区时）用同一把伞。
   - **一句问候**：`--font-display`、`--text-3xl`、400 字重，两段：按时间的问好用 `--text`，按 Agent 类型的问句用 `--text-3`（coding “What are we building?”，work “What can I take off your plate?”，general “What’s on your mind?”；`lib/welcome.ts`）。不再写“Working in … as …”——工作区已在标题栏。
   - 输入框，下面一排居中的**描边 `.chip`**（图标 + 标题，`--control` 高），完整提示词只在 `title` 里；点一下就发出。
   - **Pick up where you left off**：这个文件夹里最近更新的 3 个会话（`WelcomeRecent`），起手式下方。不套卡片：一行 `--text-3` `--text-sm` 小标签，下面是普通行（`History` 图标 · 标题 `--text-2` · 右侧 `--text-3` 相对时间），悬停 `--surface-hover`，点开该会话。没有会话就整段不显示；窗口矮（≤640px）时也不显示。
@@ -308,8 +308,8 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 - **Project 产物例外**：从消息或 Library 打开的产物保留弹窗预览，左侧产物、右侧生成它的 Thread，复用现有预览与 ThreadPanel。弹窗几乎占满窗口：标题行只出现一次（类型图标 · 标题 · `类型 · 大小 · v版本 · Thread`），整件产物的动作放在标题行右侧（引用选中文字、查看最新版本、下载）；左侧是 `--surface-sunken` 的舞台，文档画成居中的「纸」（`--surface`、`--reading-width`、正文 `--text-lg`），页面类产物铺满舞台并可切换「Page preview / Select from source」；右侧 Thread 栏宽 `clamp(360px, 32%, 520px)`，不再重复显示产物条。一个 Thread 可以维护多个产物；修订沿用产物身份和归属。打开不触发模型请求。两侧独立滚动，关闭恢复焦点。文本、Markdown、代码可以引用实际选中的原文；HTML 可切换源码引用，不扩大 iframe 权限。引用可取消，仅在用户发送时连同所见版本提交。
 - **入口**：会话顶栏只有一个工作台按钮（面板图标），角标是相对上次提交改动的文件数。`Ctrl+J` 开关工作台，`` Ctrl+` `` 直接打开终端。Agent 开始用浏览器时自动切到 Browser；对话里"N files changed"卡片上的每个文件点开即是它的 diff；Office 文件卡片点开是预览标签。
-- **一种形状**：每个视图都是 **标签栏 → 工具栏行 → 圆角卡片**。标签栏先是固定的工具（Files · Changes · Terminal · Browser · Context），竖线之后是可关闭的文档标签（文件预览、子 Agent 记录），同一文档不会开两次。工具栏行左边是上下文（路径、分支、会话），右边是动作；工具内部的多实例（浏览器页面、多个终端）用同一种**子标签胶囊**。内容一律放进圆角卡片：代码、终端与 diff 用 `--code-bg`，文档与页面用 `--surface`。**Project 的面板是阅读面**（Thread、Agent 通信、Board、Library、Routines、Project 设置）：内容用 `.wb-card.wb-flow` 从工具栏下的一条分隔线开始铺满面板，底色 `--bg`，不再套第二层带边框的卡片——和旁边的对话连成一片（2026-10-09 起）。
-- **底色与层级**（2026-10-12 起，参照 Claude 的侧边面板）：工作台是一张**卡片**（`.wb-frame`）：`--surface` 底、`--border` 细边、`--radius-xl` 圆角，与窗口右、下边缘留 6px 空隙（网页端顶部也留 6px），和对话之间不再画竖线，卡片的边框就是分界；卡片里的阅读面（`.wb-flow`）同样用 `--surface`，选中的标签用 `--surface-active`。工具栏标题是 `--text` + 600（Thread 名用 `--text-lg` + 650）；面板内的区块标题是句首大写的 `--text-md` + 650 + `--text`，数量跟在后面用 `--text-3`，**不用全大写的小号灰字**；Board 以项目名（`--text-xl` + 700）和一句天气（带状态灯）开头。
+- **一种形状**：每个视图都是 **标签栏 → 工具栏行 → 圆角卡片**。标签栏先是固定的工具（Files · Changes · Terminal · Browser · Context），竖线之后是可关闭的文档标签（文件预览、子 Agent 记录），同一文档不会开两次。工具栏行左边是上下文（路径、分支、会话），右边是动作；工具内部的多实例（浏览器页面、多个终端）用同一种**子标签胶囊**。内容一律放进圆角卡片：代码、终端与 diff 用 `--code-bg`，文档与页面用 `--surface`。**Project 的面板是阅读面**（Thread、Agent 通信、Board、Library、Routines、Project 设置）：内容用 `.wb-card.wb-flow` 铺满工具栏以下的面板，底色 `--bg`，与工具栏只隔一档色调，不画分隔线，不再套第二层卡片——和旁边的对话连成一片（2026-10-09 起，2026-11-22 去掉分隔线）。
+- **底色与层级**（2026-10-12 起，参照 Claude 的侧边面板）：工作台是一块**面板**（`.wb-frame`，2026-11-22 起按 Umbrella）：`--bg-sidebar` 底（与侧栏同一档地面）、`--radius-2xl` 圆角、无边无阴影，与窗口右、下边缘留 6px 空隙（网页端顶部也留 6px），和对话之间不画竖线，色调差就是分界；里面的卡片 `--surface`、`--radius-xl`（与外框同心），阅读面（`.wb-flow`）`--bg`；标签与子标签都是胶囊，选中的是 `--surface-raised` 底。代码、diff 与终端卡片是精确内容，保留一条 `--border` 细线。工具栏标题是 `--text` + 600（Thread 名用 `--text-lg` + 650）；面板内的区块标题是句首大写的 `--text-md` + 650 + `--text`，数量跟在后面用 `--text-3`，**不用全大写的小号灰字**；Board 以项目名（`--text-xl` + 700）和一句天气（带状态灯）开头。
 - **左右分栏**：Files 与 Changes 用同一种布局——左边列表（目录树 / 改动文件），右边详情（编辑器 / diff），选中项用 `--accent-soft`。
 - **Files**：懒加载目录树（headless-tree）+ CodeMirror 6 编辑器，`Ctrl+S` 保存；磁盘上的文件在打开后被改过（比如 Agent 改了）时拒绝覆盖。Markdown 文件默认渲染成文档（`.files-markdown`：`--surface` 底、`--text-lg` 正文、`--reading-width` 一栏），工具栏的 `.segmented` 单选（眼睛 / 代码图标，`role="radio"`）切到源码编辑，选择按设备记住（`tnega.markdownView`）；HTML 文件在工具栏多一个「Open in browser」（地球图标）。
 - **文件右键菜单**（2026-10-22 起，`components/FileMenu.tsx` 的 `useFileMenu`）：对话里的文件链接、改动卡片的行、Office 文件卡片与 Files 目录树上的文件，右键（或菜单键 / `Shift+F10`）都出现同一个菜单：先是点击会做的事（Open in browser / Open preview / Open in Files），HTML 与 Markdown 多一项 Edit in Files；桌面端再有 **Open with default app**（交给系统为这种文件登记的应用，比如代码进 VS Code）与 **Show in Finder / Explorer / folder**；最后是 Copy path / Copy relative path。菜单就是 `Menu` 的 `.menu-popover` + `.menu-item`，放在指针处（`.menu-at-point`，渲染到 `<body>`，在对话框之上），方向键移动、Esc 关闭并把焦点还给文件。系统会直接运行的类型（`.exe`、`.bat`、Windows 上的 `.js`、`.app`、`.command`、`.desktop` 等，见 `apps/desktop/src/open-file.ts`）不会被「Open with default app」启动，而是在文件管理器里显示出来；工作区之外的路径一律拒绝。
@@ -374,7 +374,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **状态记号**（`components/StatusLight.tsx`，`threadLight` / `projectLight`；2026-11-22 起画成手绘记号 `PenMark`，§3.9）：等你或被阻塞 = `you`（笔圈 + 实心点）；出错 = `failed`（`--danger` 的叉）；工作中 = `working`（排线填一半的圆）；有你还没打开的结果 = `done`（勾）；其余为 `idle` 细圆。记号总带 `aria-label` 与 `title`，屏幕阅读器读文字。
 - **推送与 PR 卡**（`project/GitCard.tsx`）：Thread 用 shell 执行 `git push` 或 `gh pr create` 后，服务端按命令输出记一条带 `git` 的 Library 资源，界面画成一行卡片：图标（分支 / PR）· 标题（“Pushed feature-x”“Pull request #12”）· 仓库 · Thread · 时间 · 状态胶囊（Pushed / Opened 成功色，Up to date 中性，Rejected / Failed 危险色，失败时元数据换成错误行）· 「Open」在浏览器打开（PR、建 PR 的页面或分支页；本地或代理远端没有网页就不显示）。同一分支再推送更新同一张卡。卡片出现在主对话里（按最近变化的时间）、该 Thread 的产物区与 Library 的「Pushes and pull requests」。状态只反映命令本身的结果，不查询代码托管平台。
 - 协调者与 Thread 的消息完整显示，不使用 “Show more” 或行数裁切；简洁表达由 Agent 的沟通指令负责，不由界面隐藏消息。Thread 一轮结束时的最终答复就是它的**汇报**：像同事在聊天里回一句话，2–4 句说做完了什么或发现了什么、在哪（PR、文件、产物的链接）、需要你做或决定什么；不复述步骤、尝试过的办法、跑过的命令和逐文件改动清单——过程留在清单与 Execution details 里（`THREAD_SYSTEM_PROMPT`）。
-- **表情回应**（2026-10-13 起，`project/Reactions.tsx`）：主对话与 Thread 对话里的每条消息都能加表情。只有一小组意思明确的表情（👍 👀 🎉 ❤️ 🙏 😄 ✅ 🤔，与 `@tnega/box` 的 `REACTIONS` 一致），不提供整张表情键盘。悬停消息时在右上角（你的气泡则在它左侧）出现一个浮起的 `SmilePlus` 小按钮，点开是一行表情；已有的回应是消息下方的小胶囊：表情 + 数字，`--surface` 底、1px `--border`、`--radius-full`、`--text-xs`，你加过的用 `--accent` 描边 + `--accent-soft` 底，点胶囊加上或撤回你的那一个，提示里写谁回应了。协调者与 Thread 也能用 `react_to_message` 给你最近的一条消息加表情（例如道谢或告知只需要一个 👍 时，用表情代替一句回话）。回应只是装饰：不发通知、不唤醒任何 Agent、不进入谁的 Session。
+- **表情回应**（2026-10-13 起，`project/Reactions.tsx`）：主对话与 Thread 对话里的每条消息都能加表情。只有一小组意思明确的表情（👍 👀 🎉 ❤️ 🙏 😄 ✅ 🤔，与 `@tnega/box` 的 `REACTIONS` 一致），不提供整张表情键盘。悬停消息时在右上角（你的气泡则在它左侧）出现一个浮起的 `SmilePlus` 小按钮，点开是一行表情；已有的回应是消息下方的小胶囊：表情 + 数字，`--surface-sunken` 底、无边、`--radius-full`、`--text-xs`，你加过的换成 `--accent-soft` 底，点胶囊加上或撤回你的那一个，提示里写谁回应了。协调者与 Thread 也能用 `react_to_message` 给你最近的一条消息加表情（例如道谢或告知只需要一个 👍 时，用表情代替一句回话）。回应只是装饰：不发通知、不唤醒任何 Agent、不进入谁的 Session。
 - Board（2026-10-10 起，`project/Board.tsx`）从上到下：**问候**（2026-10-12 起取代项目名、天气行、彩色形状条与 Today 统计行：大块颜色和图案是陷阱，留白更重要）——`greeting()` 生成一句按时间的问候（Good morning / Lunchtime（午间且没有等你的事）/ Good afternoon / Good evening / Working late），用 `--font-display`；下面一句人话说现在的情况（谁在等你、谁有结果、谁还在做；什么都没有就说 Nothing needs you，午间说可以去吃饭），再一句 `--text-3` 的简短回顾（上午回顾昨天，之后回顾今天到目前为止：完成、产物、tokens），没有发生什么就不写 → 泳道 Needs you / Working / Ready（**段头是一条柔和的色带**：`--surface-hover` 底、`--radius-md`、`--text-sm` 500 字重 `--text-2`，前面的状态点带颜色，数字 `--text-3`；Idle / Resolved 折叠行与 Recently 用同一种段头；宽面板并排时空泳道写一句“Nothing waiting on you / No thread running / No new results”）→ Idle 与 Resolved 收成一行，点开一起显示 → **Recently**：最近 4 件事（started / reported / finished / asked / got blocked / failed / added / pushed / opened pull request），一行一件，图标 + Thread 名 + 动词 + 灰色摘要 + 时间，点击打开该 Thread。
 - Board 卡片是段头下的**平铺行**（2026-10-12 起）：无边框、无底色，悬停才铺 `--surface-hover`；Needs you 不再加琥珀描边，靠状态灯与段头的点表达；标题 `--text-md` 500 字重，进展 `--text-sm`，产物 chip 底色 `--surface-hover`。内容：状态灯 · 标题（整张卡的点击区）· 进展一行（Needs you 的问题或失败原因给两行，其他一行）· **分段清单**（每步一段：完成为强调色、当前步淡强调色且只在 Working 时明灭、未做为凹陷色；超过 12 步退回一条进度条）`n/m` · **产物 chip**（最新 3 个，含推送与 PR；产物点开预览，推送 / PR 在浏览器打开，其余收成 `+N` 打开 Thread）· 底部 `动词 + 时间`（Asked / Failed / Updated / Reported / Resolved）· 活跃时长 · tokens。不加头像、不加新的状态色。
 

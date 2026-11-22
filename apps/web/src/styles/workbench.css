@@ -42,8 +42,9 @@
   transition: visibility 0s linear calc(var(--duration-panel) + 60ms);
 }
 
-/* The panel: one tone up from the ground, round corners, no outline and no shadow (§3.8). Its 6px inset
-   keeps the cards inside concentric: --radius-2xl (22) − 6 = --radius-xl (16). */
+/* The panel: the sidebar's ground tone, round corners, no outline and no shadow (§3.8), so the cards and
+   the selected tab inside it stand one tone up. Its 6px inset keeps the cards concentric:
+   --radius-2xl (22) − 6 = --radius-xl (16). */
 .wb-frame {
   display: flex;
   flex-direction: column;
@@ -53,7 +54,7 @@
   padding: 0 6px 6px;
   overflow: hidden;
   border-radius: var(--radius-2xl);
-  background: var(--surface);
+  background: var(--bg-sidebar);
 }
 
 .wb-resize {
@@ -379,7 +380,7 @@
   margin-right: 4px;
 }
 
-/* The card every view's content sits in: the panel's own surface, no outline (§3.8). */
+/* The card every view's content sits in: one tone up from the panel, no outline (§3.8). */
 .wb-card {
   position: relative;
   display: flex;
@@ -406,14 +407,13 @@
 
 /*
  * Conversations and Project panels (thread, Agent exchange, Board, Library, Routines, settings) are
- * reading surfaces like the conversation beside them, so they run edge to edge under a hairline
- * instead of sitting in a second framed card (tnega-design §5.3).
+ * reading surfaces like the conversation beside them: they take the conversation's panel tone and
+ * run to the frame's edges, the tone step is the only divide (tnega-design §5.3).
  */
 .wb-card.wb-flow {
   margin: 0 -6px -6px;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  background: var(--surface);
+  border-radius: 0 0 var(--radius-2xl) var(--radius-2xl);
+  background: var(--bg);
 }
 
 .wb-card.wb-flow.wb-scroll {

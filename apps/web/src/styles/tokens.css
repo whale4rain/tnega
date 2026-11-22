@@ -602,11 +602,11 @@
    No accent colour: the one thing to press is solid ink, everything else is grey. Meaning lives in the hand-drawn
    marks (§3.9); status colours only appear on errors, diffs and warnings. Dark is chalk on slate. */
 [data-palette="umbrella"][data-theme="light"] {
-  --bg: #ececec;
-  --bg-sidebar: #ececec;
-  --surface: #f7f7f7;
+  --bg: #f4f4f4;
+  --bg-sidebar: #ebebeb;
+  --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #e4e4e4;
+  --surface-sunken: #e8e8e8;
   --surface-hover: rgba(14, 14, 14, 0.05);
   --surface-active: rgba(14, 14, 14, 0.085);
   --border: #d6d6d6;
@@ -644,14 +644,14 @@
 }
 
 [data-palette="umbrella"][data-theme="dark"] {
-  --bg: #161617;
-  --bg-sidebar: #161617;
-  --surface: #1f1f21;
-  --surface-raised: #29292b;
-  --surface-sunken: #121213;
+  --bg: #1b1b1d;
+  --bg-sidebar: #151516;
+  --surface: #242426;
+  --surface-raised: #2b2b2d;
+  --surface-sunken: #131314;
   --surface-hover: rgba(255, 255, 255, 0.055);
   --surface-active: rgba(255, 255, 255, 0.09);
-  --border: #343437;
+  --border: #38383b;
   --border-strong: #4a4a4e;
   --border-focus: #e8e8e8;
 

@@ -1259,7 +1259,7 @@ kbd {
   background: var(--surface-hover);
 }
 
-/* The open session is lifted to the surface tone, the same step as the conversation panel beside it. */
+/* The open session is lifted one tone, to the surface its cards use. */
 .session-item.active {
   background: var(--surface);
 }
@@ -1430,8 +1430,8 @@ kbd {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  /* A panel one tone up from the ground the sidebar sits on (Umbrella §3.8): no edge between them. */
-  background: var(--surface);
+  /* The panel beside the sidebar's ground, one tone apart (Umbrella §3.8): no edge between them. */
+  background: var(--bg);
   container: conversation / inline-size;
 }
 
@@ -1836,7 +1836,7 @@ kbd {
 .conv-dock {
   flex: none;
   padding-bottom: 14px;
-  background: linear-gradient(to bottom, transparent, var(--surface) 22px);
+  background: linear-gradient(to bottom, transparent, var(--bg) 22px);
   margin-top: -22px;
   padding-top: 22px;
   position: relative;
@@ -4174,13 +4174,13 @@ kbd {
 .question-item { border: 0; padding: 0; margin: 0; min-width: 0; }
 .question-item legend { margin-bottom: 8px; font-size: var(--text-md); line-height: 1.5; }
 .question-options { display: grid; gap: 6px; margin-bottom: 8px; }
-.question-option { display: flex; gap: 9px; padding: 9px 12px; border-radius: var(--radius-lg); background: var(--surface); cursor: pointer; font-size: var(--text-sm); }
-.question-option:hover { background: var(--surface-sunken); }
+.question-option { display: flex; gap: 9px; padding: 9px 12px; border-radius: var(--radius-lg); background: var(--surface-sunken); cursor: pointer; font-size: var(--text-sm); }
+.question-option:hover { background: var(--surface-active); }
 .question-option.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .question-option input { accent-color: var(--accent); margin-top: 3px; }
 .question-description { display: block; margin-top: 3px; color: var(--text-2); line-height: 1.5; }
 .question-clear { margin-bottom: 8px; }
-.question-text { display: block; width: 100%; resize: vertical; min-height: 56px; max-height: 180px; padding: 9px 12px; border: 0; border-radius: var(--radius-lg); background: var(--surface); color: var(--text); font: inherit; font-size: var(--text-sm); }
+.question-text { display: block; width: 100%; resize: vertical; min-height: 56px; max-height: 180px; padding: 9px 12px; border: 0; border-radius: var(--radius-lg); background: var(--surface-sunken); color: var(--text); font: inherit; font-size: var(--text-sm); }
 .question-text:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
 .question-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .question-actions .muted { flex: 1; }
