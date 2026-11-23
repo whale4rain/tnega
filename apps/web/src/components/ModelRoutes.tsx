@@ -48,7 +48,7 @@ export function ModelRoutes({
     <div className="model-routes">
       <div className="model-route-list" role="radiogroup" aria-label="Default model">
         {groups.map(group => <div key={group.source} role="group" aria-label={group.label}>
-          <div className="menu-heading">{group.label}</div>
+          <div className="model-route-group">{group.label}</div>
           {group.models.map(option => {
           const route = routes.find(entry => entry.id === option.id)
           return (
@@ -60,11 +60,12 @@ export function ModelRoutes({
                   <span className="model-route-meta">{routeMeta(option, route)}</span>
                 </span>
               </label>
-              <span className="model-route-badges">
-                {defaultId === option.id && <span className="model-chip accent">Default</span>}
-                {option.vision && <span className="model-chip">Images</span>}
-                {option.contextWindow !== undefined && <span className="model-chip">{Math.round(option.contextWindow / 1000)}k</span>}
-                {!option.apiKeySet && <span className="model-chip danger">No key</span>}
+              {/* Marked in words, never a coloured badge (dialogs.md). */}
+              <span className="model-route-notes">
+                {defaultId === option.id && <span className="model-route-default">Default</span>}
+                {option.vision && <span>Images</span>}
+                {option.contextWindow !== undefined && <span>{Math.round(option.contextWindow / 1000)}k</span>}
+                {!option.apiKeySet && <span className="model-route-missing">No key</span>}
               </span>
               {route && (
                 <span className="model-route-actions">

@@ -336,3 +336,45 @@ it('fills untouched command network fields from rules that arrive after the dial
   await waitFor(() => expect(save).toHaveBeenCalledOnce())
   expect(save.mock.calls[0]?.[0].sandbox).toEqual({ network: { mode: 'allowlist', allowedDomains: ['a.dev'], deniedDomains: ['gist.github.com'] } })
 })
+
+it('asks once before closing with unsaved changes, and closes at once without them', async () => {
+  const dialogs = await import('../lib/dialogs')
+  const ask = vi.spyOn(dialogs, 'confirmDialog').mockResolvedValue(false)
+  const onClose = vi.fn()
+  const view = render(createElement(SettingsDialog, { config: snapshot, onClose, onSaved: vi.fn() }))
+  fireEvent.click(view.getByRole('button', { name: 'Cancel' }))
+  expect(onClose).toHaveBeenCalledOnce()
+  expect(ask).not.toHaveBeenCalled()
+
+  fireEvent.click(view.getByRole('tab', { name: 'Models' }))
+  fireEvent.click(view.getByRole('switch', { name: 'Automatic project memory' }))
+  expect(view.getByText('You have unsaved changes.')).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: 'Cancel' }))
+  await waitFor(() => expect(ask).toHaveBeenCalledOnce())
+  expect(onClose).toHaveBeenCalledOnce()
+})
+
+it('keeps focus on the active input when editing settings, and ignores self-saving model route forms for dirty state', () => {
+  const withRoutes: ConfigSnapshot = {
+    ...snapshot,
+    config: { ...snapshot.config, models: [{ id: 'm1', name: 'Route One', model: 'm1', protocol: 'openai', apiKeySet: true }] },
+    models: [{ id: 'm1', name: 'Route One', protocol: 'openai', reasoningEfforts: [], apiKeySet: true }],
+  }
+  const onClose = vi.fn()
+  const view = render(createElement(SettingsDialog, { config: withRoutes, onClose, onSaved: vi.fn() }))
+
+  fireEvent.click(view.getByRole('tab', { name: 'Models' }))
+  const temperature = view.getByLabelText('Temperature (all models)') as HTMLInputElement
+  temperature.focus()
+  fireEvent.change(temperature, { target: { value: '0.7' } })
+  expect(document.activeElement).toBe(temperature)
+
+  cleanup()
+  const fresh = render(createElement(SettingsDialog, { config: withRoutes, onClose, onSaved: vi.fn() }))
+  fireEvent.click(fresh.getByRole('tab', { name: 'Models' }))
+  fireEvent.click(fresh.getByRole('button', { name: 'Edit Route One' }))
+  fireEvent.change(fresh.getByLabelText('Name'), { target: { value: 'Route Two' } })
+  expect(fresh.queryByText('You have unsaved changes.')).toBeNull()
+  fireEvent.click(fresh.getByRole('button', { name: 'Close' }))
+  expect(onClose).toHaveBeenCalledOnce()
+})

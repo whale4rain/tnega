@@ -9,7 +9,7 @@ afterEach(cleanup)
 const settings: RunSettings = { agentType: 'work', mode: 'auto', permission: 'read-only', approvalMode: 'manual', reasoningEffort: 'default' }
 const models = [{ id: 'm1', name: 'Model One', protocol: 'openai' as const, reasoningEfforts: ['low' as const, 'high' as const], apiKeySet: true }]
 
-it('keeps only the model and its effort in the composer, with no mode buttons', () => {
+it('folds the model, its effort and the mode into one model word, with no mode buttons', () => {
   const onSettingsChange = vi.fn()
   const view = render(createElement(Composer, {
     settings, onSettingsChange, models, defaultModelId: 'm1', commands: [], running: false, locked: false,
@@ -18,22 +18,34 @@ it('keeps only the model and its effort in the composer, with no mode buttons', 
   expect(view.queryByRole('button', { name: /^Agent:/ })).toBeNull()
   expect(view.queryByRole('button', { name: /^Access:/ })).toBeNull()
   expect(view.queryByRole('button', { name: /^Mode:/ })).toBeNull()
+  expect(view.queryByRole('button', { name: /^Effort:/ })).toBeNull()
   expect(view.queryByRole('button', { name: /mode is on/ })).toBeNull()
   expect(view.queryByText(/to send/)).toBeNull()
-  fireEvent.click(view.getByRole('button', { name: 'Effort: Default effort' }))
+  fireEvent.click(view.getByRole('button', { name: /^Model:/ }))
+  expect(view.getByRole('group', { name: 'Reasoning effort' })).toBeTruthy()
   fireEvent.click(view.getByRole('option', { name: /High effort/ }))
   expect(onSettingsChange).toHaveBeenCalledWith({ reasoningEffort: 'high' })
-  // The model menu holds models only.
   fireEvent.click(view.getByRole('button', { name: /^Model:/ }))
-  expect(view.queryByRole('group', { name: 'Reasoning effort' })).toBeNull()
+  fireEvent.click(view.getByRole('option', { name: /^Plan/ }))
+  expect(onSettingsChange).toHaveBeenCalledWith({ mode: 'plan' })
 })
 
-it('has no effort menu for a model without effort levels', () => {
+it('names the chosen effort beside the model and offers no mode while a run is active', () => {
+  const view = render(createElement(Composer, {
+    settings: { ...settings, reasoningEffort: 'high' }, onSettingsChange: vi.fn(), models, defaultModelId: 'm1', commands: [],
+    running: true, locked: true, modelLocked: false, onSubmit: () => true, onStop: () => {}, placeholder: 'Reply…',
+  }))
+  fireEvent.click(view.getByRole('button', { name: 'Model: Default model · High' }))
+  expect(view.queryByRole('group', { name: 'Mode' })).toBeNull()
+})
+
+it('has no effort section for a model without effort levels', () => {
   const view = render(createElement(Composer, {
     settings, onSettingsChange: vi.fn(), models: [{ ...models[0]!, reasoningEfforts: [] }], defaultModelId: 'm1', commands: [],
     running: false, locked: false, onSubmit: () => true, onStop: () => {}, placeholder: 'Reply…',
   }))
-  expect(view.queryByRole('button', { name: /^Effort:/ })).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: /^Model:/ }))
+  expect(view.queryByRole('group', { name: 'Reasoning effort' })).toBeNull()
 })
 
 it('shows Plan mode while it is on and clears it back to Auto', () => {

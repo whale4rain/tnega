@@ -4,11 +4,13 @@
  * where the eyes look. Nothing else.
  *
  * Every agent id maps to a stable avatar; the main agent (a session's own
- * agent, or a Project coordinator) is an accent cloud — Tnega's weather
- * language starts from it. Users can reroll an avatar; the choice is a salt in localStorage.
+ * agent, or a Project coordinator) is the sliced brand cloud in ink — the
+ * weather falls on it. Sub-agents keep random shapes and colours
+ * so they tell apart. Users can reroll an avatar; the choice is a salt in localStorage.
  */
 
-export type Shape = 'circle' | 'rounded' | 'tilted' | 'gumdrop' | 'cloud' | 'drop'
+/** `brand` is the main agent's sliced cloud alone; sub-agents pick from `SHAPES`. */
+export type Shape = 'circle' | 'rounded' | 'tilted' | 'gumdrop' | 'cloud' | 'drop' | 'brand'
 export type EyeStyle = 'pill' | 'dot'
 
 export interface AvatarSpec {
@@ -39,6 +41,15 @@ export const COLORS: readonly string[] = [
 ]
 
 export const ACCENT = 'accent'
+
+/**
+ * The Tnega brand cloud, in the 64×64 viewBox (x: 7..57, y: 14..50): an engineered
+ * asymmetric cumulus sliced into uniform horizontal bars.
+ */
+export const BRAND_CLOUD = 'M16.5 50 A9.5 9.5 0 0 1 12.99 31.67 A14 14 0 0 1 38.32 20.49 A10.5 10.5 0 0 1 51.88 32.07 A9.5 9.5 0 0 1 47.5 50 Z'
+/** Horizontal cuts for 6 bars at 32px+ (Welcome hero, app icon), and 5 bolder bars below 32px. */
+export const BRAND_CLOUD_CUTS_LARGE = { height: 1.85, ys: [18.5, 24.8, 31.1, 37.4, 43.7] as const }
+export const BRAND_CLOUD_CUTS_SMALL = { height: 2.5, ys: [19.2, 26.9, 34.6, 42.3] as const }
 
 export const SHAPES: readonly Shape[] = ['circle', 'rounded', 'tilted', 'gumdrop', 'cloud', 'drop']
 
@@ -71,19 +82,14 @@ function between(next: () => number, min: number, max: number): number {
   return Math.round((min + next() * (max - min)) * 2) / 2
 }
 
-/**
- * Colours a coordinator may take: the brand accent and the bright palette.
- * The cloud shape is what marks the coordinator; the colour tells projects apart.
- */
-export const COORDINATOR_COLORS: readonly string[] = [ACCENT, ...COLORS.filter(color => color !== 'ink' && color !== '#6e7781')]
-
 export function avatarSpec(seed: string, role: 'coordinator' | 'agent' = 'agent'): AvatarSpec {
   const next = random(hash(`${role}:${seed}`))
   const coordinator = role === 'coordinator'
-  const shape: Shape = coordinator ? 'cloud' : pick(next, SHAPES)
+  const shape: Shape = coordinator ? 'brand' : pick(next, SHAPES)
   return {
     shape,
-    color: pick(next, coordinator ? COORDINATOR_COLORS : COLORS),
+    // The main agent is always the sliced brand cloud in ink.
+    color: coordinator ? ACCENT : pick(next, COLORS),
     eyes: next() < 0.62 ? 'pill' : 'dot',
     gazeX: between(next, -5, 5),
     gazeY: between(next, -3, 1),

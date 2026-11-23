@@ -14,6 +14,7 @@ export function ConfirmHost() {
       key={current.id}
       title={current.title}
       width={440}
+      className="dialog-confirm"
       onClose={cancel}
       footer={current.notice ? (
         <button type="button" className="button primary" onClick={() => settleDialog(current.id, true)}>OK</button>

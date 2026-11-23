@@ -4,7 +4,6 @@ import {
   FileSpreadsheet,
   FileText,
   FlaskConical,
-  History,
   Languages,
   Lightbulb,
   PenLine,
@@ -13,10 +12,12 @@ import {
   Telescope,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useId, useRef, type CSSProperties } from 'react'
+import { useId, type CSSProperties } from 'react'
 import { relativeTime } from '../lib/hooks'
 import type { AgentType, SessionSummary } from '../lib/types'
-import { eyeOffset, recentSessions, welcomeGreeting } from '../lib/welcome'
+import { BRAND_CLOUD, BRAND_CLOUD_CUTS_LARGE } from '../lib/avatar'
+import { recentSessions, welcomeGreeting } from '../lib/welcome'
+import { PenMark, type PenKind } from './PenMark'
 
 interface Starter {
   icon: LucideIcon
@@ -53,72 +54,34 @@ function beat(index: number): CSSProperties {
 }
 
 /**
- * The brand cloud, alive: it floats, blinks now and then, and its eyes follow
- * the pointer. Same drawing as `--brand-cloud` / `--brand-eyes` in app.css (the
- * eyes are cut out of the cloud, so they show the page behind it in every palette);
- * change them together. Still when reduced motion is asked for.
+ * The Tnega sliced brand cloud on a matte raised squircle tile: clean Swiss
+ * geometry, gently floating. Still when reduced motion is asked for.
  */
-export function WelcomeCloud() {
-  const svg = useRef<SVGSVGElement>(null)
-  const mask = `welcome-cloud-${useId().replace(/:/g, '')}`
-
-  useEffect(() => {
-    const node = svg.current
-    if (!node || typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    let frame = 0
-    let pointer: { x: number; y: number } | undefined
-    const look = () => {
-      frame = 0
-      const box = node.getBoundingClientRect()
-      const { x, y } = pointer ? eyeOffset(pointer.x - (box.left + box.width / 2), pointer.y - (box.top + box.height / 2)) : { x: 0, y: 0 }
-      node.style.setProperty('--look-x', `${x.toFixed(2)}px`)
-      node.style.setProperty('--look-y', `${y.toFixed(2)}px`)
-    }
-    const schedule = () => { if (!frame) frame = requestAnimationFrame(look) }
-    const move = (event: PointerEvent) => { pointer = { x: event.clientX, y: event.clientY }; schedule() }
-    const rest = () => { pointer = undefined; schedule() }
-    window.addEventListener('pointermove', move, { passive: true })
-    document.documentElement.addEventListener('pointerleave', rest)
-    window.addEventListener('blur', rest)
-    return () => {
-      if (frame) cancelAnimationFrame(frame)
-      window.removeEventListener('pointermove', move)
-      document.documentElement.removeEventListener('pointerleave', rest)
-      window.removeEventListener('blur', rest)
-    }
-  }, [])
-
+export function WelcomeUmbrella() {
+  const mask = `welcome-brand-${useId().replace(/:/g, '')}`
   return (
-    <div className="welcome-cloud" aria-hidden>
-      <svg ref={svg} viewBox="0 0 64 64" focusable="false">
-        <mask id={mask}>
-          <g fill="white">
-            <circle cx="32" cy="23" r="16" />
-            <circle cx="18" cy="34" r="14" />
-            <circle cx="46" cy="34" r="14" />
-            <circle cx="24" cy="46" r="13" />
-            <circle cx="40" cy="46" r="13" />
-          </g>
-          <g className="welcome-cloud-look">
-            <g className="welcome-cloud-eyes" fill="black">
-              <rect x="20.8" y="23.5" width="8.4" height="17" rx="4.2" />
-              <rect x="34.8" y="23.5" width="8.4" height="17" rx="4.2" />
-            </g>
-          </g>
-        </mask>
-        <rect className="welcome-cloud-body" width="64" height="64" mask={`url(#${mask})`} />
+    <div className="welcome-umbrella" aria-hidden>
+      <svg viewBox="0 0 64 64" focusable="false">
+        <defs>
+          <mask id={mask}>
+            <path d={BRAND_CLOUD} fill="white" />
+            {BRAND_CLOUD_CUTS_LARGE.ys.map(y => (
+              <rect key={y} x="0" y={y} width="64" height={BRAND_CLOUD_CUTS_LARGE.height} fill="black" />
+            ))}
+          </mask>
+        </defs>
+        <rect className="welcome-umbrella-body" width="64" height="64" mask={`url(#${mask})`} />
       </svg>
-      <span className="welcome-cloud-shadow" />
     </div>
   )
 }
 
-/** The top of an empty session: the cloud and one line of greeting. */
+/** The top of an empty session: the umbrella and one line of greeting. */
 export function WelcomeHero({ agentType, now = new Date() }: { agentType: AgentType; now?: Date }) {
   const { hello, ask } = welcomeGreeting(now.getHours(), agentType)
   return (
     <div className="welcome-hero">
-      <div className="welcome-beat" style={beat(0)}><WelcomeCloud /></div>
+      <div className="welcome-beat" style={beat(0)}><WelcomeUmbrella /></div>
       <h2 className="welcome-greeting welcome-beat" style={beat(1)}>
         <span>{hello}</span> <span className="welcome-ask">{ask}</span>
       </h2>
@@ -134,14 +97,14 @@ export function WelcomeStarters({ agentType, onPick, disabled }: { agentType: Ag
         <button
           key={starter.title}
           type="button"
-          className="chip welcome-beat"
+          className="welcome-starter welcome-beat"
           style={beat(3 + index)}
           disabled={disabled}
           title={starter.prompt}
           aria-label={starter.title}
           onClick={() => onPick(starter.prompt)}
         >
-          <starter.icon size={14} />
+          <starter.icon size={15} aria-hidden />
           {starter.title}
         </button>
       ))}
@@ -149,7 +112,17 @@ export function WelcomeStarters({ agentType, onPick, disabled }: { agentType: Ag
   )
 }
 
-/** The last few sessions in this folder, one quiet row each; nothing when there are none. */
+/** Whose turn a recent session is on, as a pen mark and the words beside it. */
+function recentState(session: SessionSummary, when: string): { kind: PenKind; note: string } {
+  if (session.waiting) return { kind: 'you', note: 'waiting on you' }
+  if (session.running) return { kind: 'working', note: `working · ${when}` }
+  return { kind: 'idle', note: when }
+}
+
+/**
+ * The last few sessions in this folder, one row each with its pen mark: one waiting on you rises
+ * to the top and says so; the rest say when. Nothing when there are none.
+ */
 export function WelcomeRecent({ sessions, onOpen, now = Date.now() }: { sessions: readonly SessionSummary[]; onOpen: (id: string) => void; now?: number }) {
   const recent = recentSessions(sessions)
   if (recent.length === 0) return null
@@ -159,11 +132,18 @@ export function WelcomeRecent({ sessions, onOpen, now = Date.now() }: { sessions
       {recent.map(session => {
         const title = session.title || 'Untitled session'
         const when = relativeTime(session.updatedAt, now)
+        const state = recentState(session, when)
         return (
-          <button key={session.id} type="button" className="welcome-recent-row" aria-label={`${title}, ${when}`} onClick={() => onOpen(session.id)}>
-            <History size={14} />
+          <button
+            key={session.id}
+            type="button"
+            className={`welcome-recent-row${session.waiting ? ' needs-you' : ''}`}
+            aria-label={`${title}, ${state.note}`}
+            onClick={() => onOpen(session.id)}
+          >
+            <PenMark kind={state.kind} size={16} />
             <span className="welcome-recent-title">{title}</span>
-            <span className="welcome-recent-time">{when}</span>
+            <span className="welcome-recent-time">{state.note}</span>
           </button>
         )
       })}

@@ -1,10 +1,11 @@
-import { MessageCircleDashed, MessageSquareText, RotateCcw } from 'lucide-react'
+import { MessageSquareText, RotateCcw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { streamSideChat } from '../../lib/api'
 import { errorText, useStableCallback } from '../../lib/hooks'
 import type { SideAsk } from '../../lib/workbench'
 import { Markdown } from '../Markdown'
 import { PromptBox } from '../PromptBox'
+import { EmptyState } from '../EmptyState'
 
 interface SideTurn {
   id: number
@@ -130,12 +131,9 @@ export function SideChatView({ workspace, ask, current, visible }: {
         <div className="side-scroll" ref={scroller}>
           {turns.length === 0
             ? (
-              <div className="wb-empty">
-                <MessageCircleDashed size={20} aria-hidden />
-                <p>{subject
-                  ? `Ask about “${subject.title}” on the side. The agent is not interrupted and never sees this chat.`
-                  : 'Ask anything on the side. Nothing here is saved.'}</p>
-              </div>
+              <EmptyState arrow="down">{subject
+                ? `Ask about “${subject.title}” on the side. The agent is not interrupted and never sees this chat.`
+                : 'Ask anything on the side. Nothing here is saved.'}</EmptyState>
             )
             : (
               <div className="timeline room" role="log" aria-label="Temporary chat messages" aria-live="polite">

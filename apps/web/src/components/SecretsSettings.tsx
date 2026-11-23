@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { confirmDialog } from '../lib/dialogs'
 import { errorText } from '../lib/hooks'
 import type { SecretInfo } from '../lib/types'
+import { SettingsCard } from './SettingsCard'
 
 /**
  * Secrets the agent can use in the open session: the ones typed for this
@@ -45,18 +46,20 @@ export function SecretsSettings({ workspace, sessionId }: { workspace: string | 
     finally { setRemoving(undefined) }
   }
 
-  if (!workspace) return <p className="muted small">Open a workspace to see its secrets.</p>
-  return <div className="secret-settings">
+  const description = `Commands get each one as an environment variable, its value masked in what tools return; the agent only sees the name.${sessionId ? '' : ' Open a session to see the ones typed just for it.'}`
+  if (!workspace) return <SettingsCard title="Secrets" description="Open a workspace to see its secrets." />
+  return <SettingsCard title="Secrets for this workspace" description={description} className="secret-settings">
     {error && <div className="notice notice-error" role="alert">{error}</div>}
-    {secrets && secrets.length === 0 && <p className="muted small">No secrets yet. When the agent needs a key it asks for it, and you type it into a hidden field.</p>}
+    {secrets && secrets.length === 0 && <p className="settings-empty">No secrets yet. When the agent needs a key it asks for it, and you type it into a hidden field.</p>}
     {secrets && secrets.length > 0 && <ul className="secret-list" aria-label="Secrets">
       {secrets.map(secret => <li key={secret.name} className="secret-row">
-        <KeyRound size={14} aria-hidden="true" />
-        <span className="secret-name">{secret.name}</span>
-        <span className="muted small">{secret.remembered ? 'Saved for this workspace' : 'This session only'}</span>
+        <KeyRound size={15} aria-hidden="true" />
+        <span className="secret-text">
+          <span className="secret-name">{secret.name}</span>
+          <span className="secret-scope">{secret.remembered ? 'Saved for this workspace' : 'This session only'}</span>
+        </span>
         <button type="button" className="button ghost small" aria-label={`Remove ${secret.name}`} disabled={removing !== undefined} onClick={() => void remove(secret)}>Remove</button>
       </li>)}
     </ul>}
-    <p className="muted small">Commands get each secret as an environment variable, and its value is masked in what tools return. The agent only sees the name.{sessionId ? '' : ' Open a session to see the ones typed just for it.'}</p>
-  </div>
+  </SettingsCard>
 }

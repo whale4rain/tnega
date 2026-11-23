@@ -98,17 +98,14 @@ export function MermaidDiagram({ code }: { code: string }) {
 
   return (
     <div className="code-block mermaid-block">
-      <div className="code-block-header">
+      <div className="code-block-tools">
+        <button type="button" className="code-tool-word" onClick={() => setShowSource((value) => !value)} aria-pressed={showSource}>
+          {showSource ? 'Diagram' : 'Source'}
+        </button>
+        <button type="button" className="code-copy" onClick={() => copy(code)} aria-label={copied ? 'Copied' : 'Copy diagram source'} title={copied ? 'Copied' : 'Copy diagram source'}>
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </button>
         <span className="code-block-lang">mermaid</span>
-        <div className="mermaid-actions">
-          <button type="button" className="code-copy" onClick={() => setShowSource((value) => !value)} aria-pressed={showSource}>
-            {showSource ? 'Diagram' : 'Source'}
-          </button>
-          <button type="button" className="code-copy" onClick={() => copy(code)} aria-label="Copy diagram source">
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-            <span>{copied ? 'Copied' : 'Copy'}</span>
-          </button>
-        </div>
       </div>
       <div ref={container} className="mermaid-canvas" hidden={showSource} onClick={openLink} />
       {showSource && <pre><code>{code}</code></pre>}

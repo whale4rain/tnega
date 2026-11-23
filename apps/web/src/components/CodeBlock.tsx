@@ -2,18 +2,21 @@ import { Check, Copy } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useCopy } from '../lib/hooks'
 
+/**
+ * A code block is one sunken shape (Umbrella conversation.md): no border and no header bar. The language
+ * is a quiet label at the top right; a round copy button appears left of it on hover or keyboard focus.
+ */
 export function CodeBlock({ code, language }: { code: string; language?: string | undefined }) {
   const [copied, copy] = useCopy()
   return (
     <div className="code-block">
-      <div className="code-block-header">
-        <span className="code-block-lang">{language || 'text'}</span>
-        <button type="button" className="code-copy" onClick={() => copy(code)} aria-label="Copy code">
-          {copied ? <Check size={12} /> : <Copy size={12} />}
-          <span>{copied ? 'Copied' : 'Copy'}</span>
+      <div className="code-block-tools">
+        <button type="button" className="code-copy" onClick={() => copy(code)} aria-label={copied ? 'Copied' : 'Copy code'} title={copied ? 'Copied' : 'Copy code'}>
+          {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
+        <span className="code-block-lang">{language || 'text'}</span>
       </div>
-        <pre><code>{language === 'javascript' || language === 'js' ? highlightJavaScript(code) : code}</code></pre>
+      <pre><code>{language === 'javascript' || language === 'js' ? highlightJavaScript(code) : code}</code></pre>
     </div>
   )
 }

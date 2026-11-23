@@ -1,7 +1,10 @@
 /* ==========================================================================
    Workbench — one panel for files, changes, terminal, browser and documents.
    Every view has the same shape: tab rail, then a toolbar row, then the
-   content in a rounded card. See docs/design/tnega-design.md §5.4.
+   content in a rounded card. See docs/design/tnega-design.md §5.3.
+   Umbrella (§3.8): the panel is one tone up from the ground, layers part by tone
+   only, tabs are pills and toolbar icon buttons are round. Only code, diff and
+   terminal frames keep a hairline.
    ========================================================================== */
 
 /* The app frame's third column (app.css): the panel's width while open, 0 while folded. */
@@ -26,9 +29,9 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  /* A small gap to the window's edges; the conversation side has none, the card's border is the divide. */
-  padding: 6px 6px 6px 0;
-  background: var(--bg);
+  /* The same gap as the conversation panel beside it: two panels floating on the ground (§3.8). */
+  padding: var(--panel-gap) var(--panel-gap) var(--panel-gap) 0;
+  background: transparent;
   container: workbench / inline-size;
 }
 
@@ -39,18 +42,19 @@
   transition: visibility 0s linear calc(var(--duration-panel) + 60ms);
 }
 
-/* The panel is a card like Claude's side panel: its own surface colour, a hairline border and round corners. */
+/* The panel: the conversation's tone, round corners, no outline and no shadow (§3.8); the cards and the
+   selected tab inside it stand one tone up. Its 6px inset keeps the cards concentric:
+   --radius-2xl (22) − 6 = --radius-xl (16). */
 .wb-frame {
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex: 1;
   min-height: 0;
-  padding: 0 8px 8px;
+  padding: 0 6px 6px;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--surface);
+  border-radius: var(--radius-2xl);
+  background: var(--bg);
 }
 
 .wb-resize {
@@ -65,13 +69,13 @@
   content: "";
   position: absolute;
   inset: 6px 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-full);
   background: transparent;
   transition: background var(--duration-fast);
 }
 
-/* A quiet hairline, not the accent: on Carbon dark the accent is near-white and read as a bold bar over
-   the card. It shows after a short pause so crossing the edge doesn't flash it. */
+/* A quiet hairline, not the accent: an ink accent would read as a bold bar beside the panel.
+   It shows after a short pause so crossing the edge doesn't flash it. */
 .wb-resize:hover::after {
   background: var(--border-strong);
   transition-delay: 150ms;
@@ -110,14 +114,14 @@
 }
 
 /* Tab rail: tools first, then documents opened from the conversation. */
-.wb-header { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; height: var(--header-h); }
+.wb-header { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; height: var(--tabs-h); }
 /* Overflowing tabs scroll with the wheel or trackpad and the active one scrolls into view; no scrollbar,
    which would add height to the row and push the tabs off the title-bar line. */
 .wb-rail {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: var(--header-h);
+  height: var(--tabs-h);
   flex: 1;
   min-width: 0;
   overflow-x: auto;
@@ -133,13 +137,14 @@
 .wb-tab {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   flex: none;
   gap: 6px;
-  height: var(--control-sm);
-  padding: 0 10px;
-  border-radius: var(--radius-md);
+  height: var(--button-h-sm);
+  padding: 0 14px 0 12px;
+  border-radius: var(--radius-full);
   color: var(--text-2);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   font-weight: 500;
   white-space: nowrap;
   transition: background var(--duration-fast), color var(--duration-fast);
@@ -150,9 +155,23 @@
   color: var(--text);
 }
 
+/* The open tab is a white pill on the panel, its word in 600 (umbrella/work.md). */
 .wb-tab.active {
-  background: var(--surface-active);
+  background: var(--surface-raised);
   color: var(--text);
+  font-weight: 600;
+}
+
+/* Tools used less are round icon buttons; the name is in the tooltip and accessible label.
+   When one carries a count (e.g. active routines) it opens into a compact pill so the number fits. */
+.wb-tab.round {
+  width: var(--button-h-sm);
+  padding: 0;
+}
+
+.wb-tab.round.has-count {
+  width: auto;
+  padding: 0 10px;
 }
 
 .wb-tab.doc {
@@ -182,7 +201,7 @@
   place-items: center;
   width: 20px;
   height: 20px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-full);
   color: var(--text-3);
   opacity: 0;
   transition: opacity var(--duration-fast), background var(--duration-fast);
@@ -203,18 +222,17 @@
   color: var(--text);
 }
 
+/* A count is a plain number beside the word, never a coloured badge. */
 .wb-count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 5px;
-  border-radius: var(--radius-full);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font-size: 10.5px;
-  font-weight: 600;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+
+.wb-tab.round:has(.wb-count) {
+  width: auto;
+  padding: 0 10px;
 }
 
 .wb-rail-divider {
@@ -231,18 +249,21 @@
   height: var(--control-sm);
 }
 
-/* Tool tabs show only their icon until selected; the name stays in the tooltip and accessible label. */
-.wb-tab:not(.doc):not(.active) {
-  padding: 0 6px;
+/* Toolbar and tab-rail actions are round icon buttons. */
+.wb-header .icon-button,
+.wb-toolbar .icon-button {
+  border-radius: var(--radius-full);
 }
 
-.wb-tab:not(.doc):not(.active) .wb-tab-label {
-  display: none;
-}
+/* A narrow Workbench keeps pills to their icons, except the open one. */
+@container workbench (max-width: 420px) {
+  .wb-tab.pill:not(.active) {
+    width: var(--button-h-sm);
+    padding: 0;
+  }
 
-/* A narrow Workbench keeps tool tabs to their icons. */
-@container workbench (max-width: 520px) {
-  .wb-tab:not(.doc) .wb-tab-label {
+  .wb-tab.pill:not(.active) .wb-tab-label,
+  .wb-tab.pill:not(.active) .wb-count {
     display: none;
   }
 }
@@ -310,7 +331,7 @@
   height: 22px;
   padding: 0 8px;
   border-radius: var(--radius-full);
-  background: var(--surface-active);
+  background: var(--surface-sunken);
   color: var(--text-2);
   font-size: var(--text-xs);
   font-weight: 500;
@@ -333,7 +354,7 @@
   flex: 0 1 190px;
   min-width: 90px;
   height: var(--control-sm);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   color: var(--text-2);
   transition: background var(--duration-fast), color var(--duration-fast);
 }
@@ -343,9 +364,8 @@
 }
 
 .wb-subtab.active {
-  background: var(--surface);
+  background: var(--surface-raised);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
 }
 
 .wb-subtab-main {
@@ -370,17 +390,22 @@
   margin-right: 4px;
 }
 
-/* The card every view's content sits in; the browser page uses the same one. */
+/* The card every view's content sits in: one tone up from the panel, no outline (§3.8). */
 .wb-card {
   position: relative;
   display: flex;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   background: var(--surface);
   overflow: hidden;
+}
+
+/* The terminal is exact content on a near-identical tone: it keeps a hairline (umbrella/work.md).
+   Files and Changes are one white card with the list as a column on the panel tone inside it. */
+.wb-card.terminal-card {
+  border: 1px solid var(--border);
 }
 
 .wb-card.wb-scroll {
@@ -391,15 +416,13 @@
 
 /*
  * Conversations and Project panels (thread, Agent exchange, Board, Library, Routines, settings) are
- * reading surfaces like the conversation beside them, so they run edge to edge under a hairline
- * instead of sitting in a second framed card (tnega-design §5.3).
+ * reading surfaces like the conversation beside them: they take the conversation's panel tone and
+ * run to the frame's edges, the tone step is the only divide (tnega-design §5.3).
  */
 .wb-card.wb-flow {
-  margin: 0 -8px -8px;
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  background: var(--surface);
+  margin: 0 -6px -6px;
+  border-radius: 0 0 var(--radius-2xl) var(--radius-2xl);
+  background: var(--bg);
 }
 
 .wb-card.wb-flow.wb-scroll {
@@ -428,12 +451,39 @@
 .wb-list {
   min-height: 0;
   overflow: auto;
-  padding: 6px 4px 16px;
-  border-right: 1px solid var(--border);
+  padding: 6px 6px 16px;
+  background: var(--bg);
+}
+
+/* Tree rows: 30, radius 10, icon and name; the open file is sunken and 600. */
+.files-tree-pane .file-tree {
+  gap: 1px;
+}
+
+.files-tree-pane .file-tree-row {
+  height: var(--toolbar-h);
+  gap: 6px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+}
+
+.files-tree-pane .file-tree-row.selected {
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.files-tree-pane .file-tree-icon.folder {
+  color: var(--text-2);
 }
 
 .wb-list-note {
   padding: 6px 8px;
+}
+
+/* Nothing open yet: the card's own white, with the drawn arrow toward the tree. */
+.wb-detail:has(> .wb-empty) {
+  background: var(--surface);
 }
 
 .wb-detail {
@@ -471,21 +521,49 @@
   margin: 8px;
 }
 
+/*
+ * An empty room (umbrella/welcome-and-empty.md): a drawn arrow toward the one thing to do, one
+ * sentence in reading size, at most one sunken button, centred in the card.
+ */
 .wb-empty {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 10px;
+  gap: 12px;
   flex: 1;
-  padding: 24px;
-  color: var(--text-3);
+  padding: 28px 24px;
+  color: var(--text-2);
   text-align: center;
 }
 
 .wb-empty p {
-  max-width: 320px;
+  max-width: 340px;
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-lg);
+  line-height: 1.6;
+  text-wrap: balance;
+}
+
+/* The pen's arrow: 2 px, ink, pointing toward the action. Drawn once, like every pen stroke. */
+.pen-arrow .pen-stroke {
+  stroke-width: 2;
+}
+
+.pen-arrow-right { transform: scaleX(-1); }
+.pen-arrow-up { transform: rotate(60deg); }
+.pen-arrow-down { transform: rotate(-60deg) scaleX(-1); }
+
+/* Loading: the working mark and what is loading in words; no spinner beside text. */
+.wb-loading {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  flex: 1;
+  padding: 28px 24px;
+  color: var(--text-2);
+  font-size: var(--text-lg);
+  text-align: center;
 }
 
 /* Changes: file rows with a status letter and line counts. */
@@ -494,11 +572,11 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: var(--control-sm);
+  height: var(--toolbar-h);
   padding: 0 8px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-md);
   color: var(--text-2);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   text-align: left;
   white-space: nowrap;
 }
@@ -509,8 +587,9 @@
 }
 
 .wb-row.selected {
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .change-status {
@@ -649,7 +728,6 @@
   max-width: 100%;
   height: auto;
   border-radius: var(--radius-xs);
-  box-shadow: var(--shadow-sm);
   image-rendering: auto;
 }
 
@@ -686,7 +764,8 @@
 }
 
 /* Too narrow to sit beside the conversation: the Workbench floats over it (WORKBENCH_OVERLAY_QUERY in
-   lib/panels.ts) and slides in from the right edge. It covers the view, so it is solid in every Glass mode. */
+   lib/panels.ts) and slides in from the right edge. It covers the view, so it is solid in every Glass mode
+   and, like a dialog, casts the one shadow (§3.8). */
 @media (max-width: 1100px) {
   .app,
   .app.workbench-open {
@@ -729,7 +808,7 @@
 }
 
 /* Temporary chat (sidebar's Temporary chat and /btw): quick questions on the side, never saved.
-   A reading surface like a project thread: messages on --surface, the composer docked below. */
+   A reading surface like a project thread: messages on --bg, the composer docked below. */
 .wb-card.side-chat-body {
   flex-direction: column;
   background: var(--bg);

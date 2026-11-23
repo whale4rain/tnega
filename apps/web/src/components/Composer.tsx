@@ -2,7 +2,7 @@ import { Briefcase, Code2, MessageSquare, ShieldAlert, ShieldCheck, ShieldHalf, 
 import { memo, type ReactNode } from 'react'
 import type { CommandSpec } from '../lib/completion'
 import type { AgentType, ApprovalMode, ConfigSnapshot, ImageAttachment, ModelOption, Permission, SessionEffort, SessionMode } from '../lib/types'
-import { Choice, SectionChoice, choiceSection, type ChoiceOption } from './Menu'
+import { Choice, SectionChoice, choiceSection, type ChoiceOption, type ChoiceSection } from './Menu'
 import { PromptBox, type ArgumentSuggestion } from './PromptBox'
 import { ModelPicker } from './ModelPicker'
 export { modelOptions } from './ModelPicker'
@@ -123,17 +123,32 @@ export const Composer = memo(function Composer({
       resetKey={resetKey}
       toolbar={
         <>
-          <ModelPicker model={settings.model} reasoningEffort={settings.reasoningEffort} onChange={onSettingsChange} models={models} defaultModelId={defaultModelId} config={config} onConfigChanged={onConfigChanged} disabled={modelLocked} />
           <ModeTag mode={settings.mode} onClear={() => onSettingsChange({ mode: 'auto' })} disabled={locked} />
+          <ModelPicker
+            plain
+            align="end"
+            model={settings.model}
+            reasoningEffort={settings.reasoningEffort}
+            onChange={onSettingsChange}
+            models={models}
+            defaultModelId={defaultModelId}
+            config={config}
+            onConfigChanged={onConfigChanged}
+            disabled={modelLocked}
+            // The mode can't change mid-run, so its section is only offered between runs.
+            sections={locked ? NO_SECTIONS : [choiceSection('mode', 'Mode', MODE_OPTIONS, settings.mode, mode => onSettingsChange({ mode }))]}
+          />
         </>
       }
     />
   )
 })
 
+const NO_SECTIONS: readonly ChoiceSection[] = []
+
 /**
- * Plan and Goal have no button of their own: `/plan` and `/goal` turn them
- * on. While one is on, this tag says so and clears it back to Auto.
+ * Plan and Goal are chosen in the model word's menu (or with `/plan` and
+ * `/goal`). While one is on, this quiet word says so and clears it back to Auto.
  */
 function ModeTag({ mode, onClear, disabled }: { mode: SessionMode; onClear: () => void; disabled: boolean }) {
   const option = MODE_OPTIONS.find(each => each.value === mode)
@@ -141,13 +156,12 @@ function ModeTag({ mode, onClear, disabled }: { mode: SessionMode; onClear: () =
   return (
     <button
       type="button"
-      className="chip"
+      className="word-choice"
       aria-label={`${option.label} mode is on. Switch back to Auto`}
       title={`${option.description}. Click to switch back to Auto.`}
       disabled={disabled}
       onClick={onClear}
     >
-      {option.icon}
       <span>{option.label} mode</span>
       <X size={12} className="chip-caret" />
     </button>
@@ -183,11 +197,11 @@ export function SessionControls({
         disabled={locked}
         side="bottom"
         align="end"
+        plain
       />
       <SectionChoice
         label="Access"
         summary={`${permission?.label ?? ''}${approval === 'auto' ? ' · Auto review' : ''}`}
-        icon={permission?.icon}
         {...(permission?.tone ? { tone: permission.tone } : {})}
         sections={[
           choiceSection('permission', 'Permissions', PERMISSION_OPTIONS, settings.permission, value => onSettingsChange({ permission: value })),
@@ -196,6 +210,7 @@ export function SessionControls({
         disabled={accessLocked}
         side="bottom"
         align="end"
+        plain
       />
     </div>
   )

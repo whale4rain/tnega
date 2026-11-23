@@ -27,7 +27,7 @@
   --text-lg: 15px;
   --text-xl: 19px;
   --text-2xl: 26px;
-  /* The new-session greeting only: a few words of welcome, in the display serif. */
+  /* The new-session greeting only: a few words of welcome, in the display font. */
   --text-3xl: 34px;
 
   /* Umbrella shapes (tnega-design §3.8): soft, concentric, never outlined. Panels 2xl, cards xl, fields lg,
@@ -38,6 +38,8 @@
   --radius-lg: 14px;
   --radius-xl: 16px;
   --radius-2xl: 22px;
+  /* Dialogs and sheets: the panel radius plus the 6 inset (foundations.md). */
+  --radius-dialog: calc(var(--radius-2xl) + 6px);
   --radius-full: 999px;
 
   /* The hand layer (tnega-design §3.9): one pen, drawn in over --pen-draw when a mark first lands. */
@@ -58,15 +60,30 @@
    * (TITLE_BAR_HEIGHT), so the native window controls sit inside it.
    */
   --header-h: 32px;
+  /* Umbrella: the gap between the window ground and the panels floating on it. */
+  --panel-gap: 10px;
   --toolbar-h: 28px;
   --control-lg: 32px;
   --control: 26px;
   --control-sm: 22px;
   --row-h: 26px;
+  /* Umbrella controls (docs/design/umbrella/controls.md): pill buttons, sunken fields, switches. */
+  --button-h: 38px;
+  --button-h-sm: 32px;
+  --button-h-lg: 44px;
+  --field-h: 40px;
+  --nav-pill-h: 34px;
+  /* The Workbench tab row (umbrella/work.md). */
+  --tabs-h: 40px;
+  --menu-item-h: 36px;
+  /* The composer pill (umbrella/composer.md): 52 tall at rest, round 40 buttons inside a 6 inset, so 26 = 20 + 6. */
+  --composer-h: 52px;
+  --composer-button: 40px;
+  --radius-composer: 26px;
   --icon: 14px;
   --icon-sm: 12px;
   /* The sidebar is read at a glance, so its rows and icons are a size up from the rest of the chrome. */
-  --nav-row-h: 30px;
+  --nav-row-h: 36px;
   --nav-icon: 16px;
 
   --sidebar-width: 264px;
@@ -77,6 +94,8 @@
   --scroll-fade: 28px;
 
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* The hand tick (PenMark done) as a mask for CSS-drawn checks; its colour comes from --pen. */
+  --pen-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4.4 10.6l3.7 3.6 7.6-8.6' fill='none' stroke='currentColor' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --duration-fast: 120ms;
   --duration-med: 200ms;
   /* Folding the sidebar or the Workbench in and out (PANEL_MS in lib/panels.ts). */
@@ -99,6 +118,10 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
+  /* Switch (controls.md): grey track off, ink on; the knob stays visible on both. Derived per palette. */
+  --switch-off: color-mix(in srgb, var(--text) 24%, var(--surface));
+  --switch-knob-off: var(--surface-raised);
+  --switch-knob-on: var(--surface-raised);
   --bg: #f4f6f8;
   --bg-sidebar: #eceff3;
   --surface: #ffffff;
@@ -179,6 +202,9 @@
  */
 [data-theme="dark"] {
   color-scheme: dark;
+  --switch-off: color-mix(in srgb, var(--text) 26%, var(--surface));
+  --switch-knob-off: var(--text-2);
+  --switch-knob-on: var(--surface-raised);
   --bg: #0f131a;
   --bg-sidebar: #0c1016;
   --surface: #171c26;
@@ -602,11 +628,11 @@
    No accent colour: the one thing to press is solid ink, everything else is grey. Meaning lives in the hand-drawn
    marks (§3.9); status colours only appear on errors, diffs and warnings. Dark is chalk on slate. */
 [data-palette="umbrella"][data-theme="light"] {
-  --bg: #ececec;
+  --bg: #f7f7f7;
   --bg-sidebar: #ececec;
-  --surface: #f7f7f7;
+  --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #e4e4e4;
+  --surface-sunken: #e8e8e8;
   --surface-hover: rgba(14, 14, 14, 0.05);
   --surface-active: rgba(14, 14, 14, 0.085);
   --border: #d6d6d6;
@@ -644,14 +670,14 @@
 }
 
 [data-palette="umbrella"][data-theme="dark"] {
-  --bg: #161617;
-  --bg-sidebar: #161617;
-  --surface: #1f1f21;
-  --surface-raised: #29292b;
-  --surface-sunken: #121213;
+  --bg: #1b1b1d;
+  --bg-sidebar: #151516;
+  --surface: #242426;
+  --surface-raised: #2b2b2d;
+  --surface-sunken: #131314;
   --surface-hover: rgba(255, 255, 255, 0.055);
   --surface-active: rgba(255, 255, 255, 0.09);
-  --border: #343437;
+  --border: #38383b;
   --border-strong: #4a4a4e;
   --border-focus: #e8e8e8;
 
@@ -717,7 +743,7 @@
   --control-sm: 26px;
   --row-h: 32px;
   --icon: 15px;
-  --nav-row-h: 34px;
+  --nav-row-h: 40px;
   --nav-icon: 17px;
 }
 

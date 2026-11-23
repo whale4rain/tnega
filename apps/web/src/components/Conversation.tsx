@@ -1,22 +1,18 @@
 import { completionObserver, notifyDesktopWaiting } from '../lib/desktop-completion'
 import {
   ArrowDown,
-  Check,
   Copy,
   Link,
   ChevronDown,
   CircleDashed,
   GitBranch,
-  ListChecks,
   MoreHorizontal,
   Pencil,
   Shrink,
-  ShieldQuestion,
   Target,
   Trash2,
   X,
   PanelLeft,
-  PanelRight,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
@@ -56,6 +52,7 @@ import type { ArgumentSuggestion } from './PromptBox'
 import { Menu } from './Menu'
 import { Timeline, type TimelineActions, type TimelineAgent, type TimelineSky } from './Timeline'
 import { QuestionPanel } from './QuestionPanel'
+import { PenMark } from './PenMark'
 import { QueuedMessages, type QueuedMessage } from './QueuedMessages'
 import { BackgroundJobs } from './BackgroundJobs'
 import { LinkContext, type LinkHandlers } from '../lib/links'
@@ -997,7 +994,7 @@ export function Conversation({
             {summary ? <EditableTitle value={title} onSave={rename} /> : <h1 className="conv-title">{title}</h1>}
           </div>
           <div className="conv-subtitle">
-            <span className="conv-workspace" title={workspace}>{folderName(workspace)}</span>
+            <span className="conv-folder" title={workspace}>{folderName(workspace)}</span>
             {summary?.parentSessionId && <span className="conv-tag"><GitBranch size={12} /> fork</span>}
             {goal && <GoalPill goal={goal} />}
           </div>
@@ -1010,24 +1007,19 @@ export function Conversation({
           {sessionId && <BackgroundJobs key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} onOpenBrowser={onBrowserActivity} />}
           {context && context.limit > 0 && <ContextMeter context={context} metrics={metrics} usage={usage} />}
           {onToggleWorkbench && (
-            <button
-              type="button"
-              className={`icon-button small header-icon${workbenchOpen ? ' active' : ''}`}
-              onClick={onToggleWorkbench}
-              aria-label={workbenchOpen ? 'Hide workbench' : `Show workbench${changeCount ? ` (${changeCount} changed files)` : ''}`}
-              aria-pressed={workbenchOpen}
-              title={changeCount ? `Workbench · ${changeCount} changed ${changeCount === 1 ? 'file' : 'files'} (Ctrl+J)` : 'Workbench (Ctrl+J)'}
-            >
-              <PanelRight size={14} />
-              {changeCount !== undefined && changeCount > 0 && <span className="count-badge live" aria-hidden>{changeCount > 99 ? '99+' : changeCount}</span>}
-            </button>
+            <WorkPill
+              open={workbenchOpen}
+              count={changeCount}
+              busiest={waiting ? 'you' : live ? 'working' : undefined}
+              onToggle={onToggleWorkbench}
+            />
           )}
           {summary && (
             <Menu
               label="Session actions"
               align="end"
-              className="icon-button small header-icon"
-              trigger={<MoreHorizontal size={14} />}
+              className="header-more"
+              trigger={<MoreHorizontal size={16} />}
               items={[
                 { key: 'fork', label: 'Fork entire session', icon: <GitBranch size={14} />, onSelect: () => void fork(), disabled: live },
                 { key: 'copy-link', label: 'Copy session link', icon: <Link size={14} />, onSelect: () => copyToClipboard(sessionLink(workspace, summary.id)) },
@@ -1100,7 +1092,7 @@ export function Conversation({
             <ApprovalCard key={approval.id} approval={approval} onAnswer={allow => void answer(approval, allow)} />
           ))}
           {sessionId && <QuestionPanel key={`${workspace}:${sessionId}`} workspace={workspace} sessionId={sessionId} running={live} onResumeQueued={() => { pendingResume.current = sessionId; setResumeVersion(version => version + 1) }} />}
-          {plan && (plan.items.length > 0 || plan.status === 'pending') && <PlanPanel plan={plan} />}
+          {plan && (plan.items.length > 0 || plan.status === 'pending') && <PlanPanel plan={plan} running={live} />}
           {sessionId && (
             <QueuedMessages
               items={queues[sessionId] ?? []}
@@ -1259,6 +1251,33 @@ function ContextMeter({ context, metrics, usage }: { context: ContextUsage; metr
   )
 }
 
+/**
+ * The Workbench toggle (Umbrella conversation header): an ink pill that says
+ * "Work · N" (files changed since the last commit), led by the mark of the
+ * busiest state inside it. Ctrl+J does the same from anywhere.
+ */
+function WorkPill({ open, count, busiest, onToggle }: {
+  open: boolean
+  count: number | undefined
+  busiest: 'you' | 'working' | undefined
+  onToggle: () => void
+}) {
+  const changed = count !== undefined && count > 0 ? count : 0
+  return (
+    <button
+      type="button"
+      className={`work-pill${open ? ' is-open' : ''}`}
+      onClick={onToggle}
+      aria-label={open ? 'Hide workbench' : `Show workbench${changed ? ` (${changed} changed files)` : ''}`}
+      aria-pressed={open}
+      title={changed ? `${open ? 'Hide' : 'Open'} the Workbench · ${changed} changed ${changed === 1 ? 'file' : 'files'} · Ctrl J` : `${open ? 'Hide' : 'Open'} the Workbench · Ctrl J`}
+    >
+      {busiest && <PenMark kind={busiest} size={16} />}
+      <span>Work{changed ? ` · ${changed > 99 ? '99+' : changed}` : ''}</span>
+    </button>
+  )
+}
+
 function GoalPill({ goal }: { goal: GoalState }) {
   return (
     <span className={`conv-tag goal-${goal.status}`} title={goal.objective}>
@@ -1268,30 +1287,66 @@ function GoalPill({ goal }: { goal: GoalState }) {
 }
 
 export function ApprovalCard({ approval, onAnswer }: { approval: Approval; onAnswer: (allow: boolean) => void }) {
+  const outside = escalation(approval.input)
+  const where = approvalWhere(approval.input)
+  const scope = approval.grant ? `First call: ${approval.tool}` : approval.reason ? 'Asks you about this one call' : outside ? 'Asks to leave the sandbox for this one call' : 'Outside the current permission level'
   return (
-    <div className="approval-card" role="alertdialog" aria-label="Permission request">
+    <div
+      className="approval-card"
+      role="alertdialog"
+      aria-label="Permission request"
+      onKeyDown={event => {
+        if (event.key !== 'Escape') return
+        event.stopPropagation()
+        onAnswer(false)
+      }}
+    >
       <div className="approval-head">
-        <ShieldQuestion size={14} />
-        {approval.grant
-          ? <span>The agent wants to <strong>{approval.grant.label}</strong></span>
-          : <span>The agent wants to use <strong>{approval.tool}</strong>{approval.via === 'run_code' ? ' from a CodeMode script' : ''}</span>}
+        <PenMark kind="you" size={28} />
+        <span className="approval-what">{toolName(approval.tool)}{where ? ` · ${where}` : ''}</span>
       </div>
-      {approval.input && <pre className="approval-input">{approvalText(approval.input)}</pre>}
+      <p className="approval-ask">
+        {approval.grant
+          ? <>The agent wants to <span className="pen-underline">{approval.grant.label}</span></>
+          : <>The agent wants to use <strong>{approval.tool}</strong>{approval.via === 'run_code' ? ' from a CodeMode script' : ''}</>}
+        {outside && <>; it <span className="pen-underline">runs outside the sandbox</span>, with your full access{outside.justification ? `: ${outside.justification}` : '.'}</>}
+      </p>
       {approval.reason && (
         <p className="approval-escalation"><strong>The agent flagged a risk</strong>: {approval.reason}</p>
       )}
-      {escalation(approval.input) && (
-        <p className="approval-escalation">
-          <strong>Runs outside the sandbox</strong>, with your full access{escalation(approval.input)?.justification ? `: ${escalation(approval.input)?.justification}` : '.'}
-        </p>
-      )}
+      {approval.input && <pre className="approval-input">{approvalText(approval.input)}</pre>}
       <div className="approval-actions">
-        <span className="muted small">{approval.grant ? `First call: ${approval.tool}` : approval.reason ? 'Asks you about this one call' : escalation(approval.input) ? 'Asks to leave the sandbox for this one call' : 'Outside the current permission level'}</span>
-        <button type="button" className="button ghost small" onClick={() => onAnswer(false)}>Deny</button>
-        <button type="button" className="button primary small" onClick={() => onAnswer(true)}>{approval.grant ? 'Allow in this session' : 'Allow once'}</button>
+        <button type="button" className="button primary" onClick={() => onAnswer(true)}>{approval.grant ? 'Allow in this session' : 'Allow once'}</button>
+        <button type="button" className="button ghost" onClick={() => onAnswer(false)}>Deny</button>
+        <span className="approval-scope">{scope}</span>
       </div>
     </div>
   )
+}
+
+/** "Shell", "Computer click": the tool in words for the card's head row. */
+function toolName(tool: string): string {
+  const words = tool.replace(/[_-]+/g, ' ').trim()
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : tool
+}
+
+/** Where the call acts: its working folder, file or site, when the input names one. */
+function approvalWhere(input: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(input)
+    if (!parsed || typeof parsed !== 'object') return undefined
+    const cwd: unknown = Reflect.get(parsed, 'cwd')
+    if (typeof cwd === 'string' && cwd.trim()) return `in ${cwd.trim()}`
+    const path: unknown = Reflect.get(parsed, 'path')
+    if (typeof path === 'string' && path.trim()) return path.trim()
+    const url: unknown = Reflect.get(parsed, 'url')
+    if (typeof url === 'string' && url.trim()) {
+      try { return new URL(url).host || url } catch { return url }
+    }
+  } catch {
+    // Plain text input names no place.
+  }
+  return undefined
 }
 
 /** Whether a request asks to run outside the sandbox, and why. */
@@ -1324,23 +1379,32 @@ function approvalText(input: string): string {
   return input
 }
 
-function PlanPanel({ plan }: { plan: PlanPayload }) {
+/** The plan as a white card: its title and count, one hatched bar, then each step with its mark. */
+function PlanPanel({ plan, running }: { plan: PlanPayload; running: boolean }) {
   const [open, setOpen] = useState(true)
+  const total = plan.items.length
   const done = plan.items.filter(item => item.status === 'done').length
+  // The step in hand: the first one not yet done, while the agent works.
+  const current = running ? plan.items.find(item => item.status === 'pending')?.id : undefined
   return (
-    <div className={`plan-panel${open ? ' open' : ''}`}>
+    <section className={`plan-panel${open ? ' open' : ''}`} aria-label="Plan">
       <button type="button" className="plan-head" onClick={() => setOpen(v => !v)} aria-expanded={open}>
-        <ListChecks size={14} />
-        <span className="plan-title">{plan.summary || 'Plan'}</span>
-        <span className="plan-count">{plan.items.length ? `${done}/${plan.items.length}` : 'Drafting…'}</span>
+        <span className="plan-title">Plan</span>
+        <span className="plan-count">{total ? `${done} of ${total}` : 'Drafting…'}</span>
         <ChevronDown size={14} className="chevron" />
       </button>
-      {open && plan.items.length > 0 && (
+      {plan.summary && open && <p className="plan-summary">{plan.summary}</p>}
+      {total > 0 && (
+        <div className="plan-progress" role="progressbar" aria-label="Plan progress" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+          <span className="pen-hatch" style={{ width: `${(done / total) * 100}%` }} />
+        </div>
+      )}
+      {open && total > 0 && (
         <ol className="plan-items">
-          {plan.items.map(item => <PlanRow key={item.id} item={item} />)}
+          {plan.items.map(item => <PlanRow key={item.id} item={item} current={item.id === current} />)}
         </ol>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -1350,11 +1414,13 @@ const PLACEHOLDERS: Record<AgentType, string> = {
   general: 'Ask anything…',
 }
 
-function PlanRow({ item }: { item: PlanItem }) {
+function PlanRow({ item, current }: { item: PlanItem; current: boolean }) {
+  const kind = item.status === 'done' ? 'done' : item.status === 'failed' ? 'failed' : current ? 'working' : 'idle'
+  const label = item.status === 'done' ? 'Done' : item.status === 'failed' ? 'Failed' : current ? 'In hand' : undefined
   return (
-    <li className={`plan-item status-${item.status}`}>
+    <li className={`plan-item status-${current ? 'running' : item.status}`}>
       <span className="plan-check">
-        {item.status === 'done' ? <Check size={12} strokeWidth={3} /> : item.status === 'failed' ? <X size={12} strokeWidth={3} /> : null}
+        <PenMark kind={kind} size={16} label={label} />
       </span>
       <span>
         {item.title}
