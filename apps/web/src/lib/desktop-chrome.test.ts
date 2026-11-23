@@ -27,6 +27,11 @@ it('reserves native controls only in the header at the top-right edge', () => {
   expect(conversation.classList.contains('window-controls-header')).toBe(true)
   expect(drawer.classList.contains('window-controls-header')).toBe(false)
   expect((conversation as HTMLElement).style.getPropertyValue('--window-controls-gap')).toBe('0px')
+  // An inset conversation card (10px panel gap on the right) still sits under the right controls.
+  conversation.getBoundingClientRect = () => new DOMRect(264, 0, 1006, 32)
+  markWindowControls(root, 1280)
+  expect(conversation.classList.contains('window-controls-header')).toBe(true)
+  expect((conversation as HTMLElement).style.getPropertyValue('--window-controls-gap')).toBe('10px')
 })
 
 it('keeps the top-left header clear of the macOS traffic lights instead', () => {

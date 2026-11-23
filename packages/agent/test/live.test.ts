@@ -1791,4 +1791,28 @@ describe('live agent attachments', () => {
     const events = await handle.agent.session.read()
     expect(events.find(event => event.type === 'user/message')?.payload).toMatchObject({ attachments: [image] })
   })
+
+  it('aborts a turn when dispose() arrives during turn/start setup', async () => {
+    const root = await mountRoot()
+    let completeCalls = 0
+    const hanging: LLMAdapter = {
+      complete: (_messages, _tools, options) => {
+        completeCalls += 1
+        return new Promise((_done, fail) => {
+          const signal = options?.signal
+          if (signal?.aborted) fail(new Error('stopped'))
+          signal?.addEventListener('abort', () => fail(new Error('stopped')), { once: true })
+        })
+      },
+    }
+    const handle = await createHandle(root, await tempFile('dispose-during-turn-start.jsonl'), hanging)
+    let disposed: Promise<void> | undefined
+    handle.agent.ctx.on('session/event', (event: { type: string }) => {
+      if (event.type === 'turn/start' && !disposed) disposed = handle.dispose()
+    })
+    await handle.agent.followup({ text: 'hello' })
+    await expect.poll(() => disposed !== undefined, { timeout: 2_000 }).toBe(true)
+    await disposed
+    expect(completeCalls).toBe(0)
+  })
 })

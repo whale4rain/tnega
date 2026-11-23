@@ -30,7 +30,7 @@ function boxes(checkout: string, pushed: string[]): ThreadMachines {
   return {
     async open() {
       return {
-        machine: { link: { deviceId: 'box', protocolVersion: 2, capabilities: { fs: true, process: true, http: true, platform: 'linux' }, workspaces: [{ id: 'ws', path: checkout }], closed: false, call: () => Promise.reject(new Error('no daemon in this test')), onNotification: () => () => undefined, onClose: () => () => undefined, close: () => undefined }, isolated: true },
+        machine: { link: { deviceId: 'box', protocolVersion: 2, capabilities: { fs: true, process: true, http: true, platform: process.platform }, workspaces: [{ id: 'ws', path: checkout }], closed: false, call: () => Promise.reject(new Error('no daemon in this test')), onNotification: () => () => undefined, onClose: () => () => undefined, close: () => undefined }, isolated: true },
         cwd: checkout,
         close: () => undefined,
         run: async (command, args, cwd) => {

@@ -90,6 +90,8 @@ export function backgroundBehind(element: Element | null, fallback: string): str
 
 /** How far the macOS traffic lights reach from the window's left edge, in CSS pixels. */
 const TRAFFIC_LIGHTS_WIDTH = 72
+/** How far Windows/Linux window controls reach from the window's right edge, in CSS pixels. */
+const WINDOW_CONTROLS_WIDTH = 138
 
 /** Which top corner the native window controls occupy. */
 export function windowControlsSide(platform = bridge()?.platform): 'left' | 'right' {
@@ -111,10 +113,12 @@ export function markWindowControls(root: ParentNode, width: number, side: 'left'
     const rect = header.getBoundingClientRect()
     const edge = header.matches('.wb-header') ? header.closest('.workbench')?.getBoundingClientRect() ?? rect : rect
     const atTop = rect.width > 0 && rect.top < 32 && rect.bottom > 0
-    header.classList.toggle('window-controls-header', side === 'right' && atTop && edge.right >= width - 1)
+    // Cards are inset from the window edge, so any top bar that reaches under
+    // the right-hand controls needs clearance, not only one flush at x = width.
+    header.classList.toggle('window-controls-header', side === 'right' && atTop && edge.right > width - WINDOW_CONTROLS_WIDTH && edge.left < width)
     // The sidebar card is inset from the window edge, so on macOS any top bar that
     // starts under the traffic lights needs clearance, not only one at x = 0.
-    header.classList.toggle('window-controls-header-start', side === 'left' && atTop && edge.left < TRAFFIC_LIGHTS_WIDTH)
+    header.classList.toggle('window-controls-header-start', side === 'left' && atTop && edge.left < TRAFFIC_LIGHTS_WIDTH && edge.right > 0)
     // The conversation header keeps only the room the controls still take from its own end (CSS), so
     // its clearance follows a panel folding in beside it instead of snapping by the controls' width a
     // frame into the fold, which shifted the title area mid-slide.

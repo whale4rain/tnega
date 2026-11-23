@@ -592,26 +592,34 @@ class LiveAgentImpl implements LiveAgent {
         // already passed its last next-step boundary. Inject stays inert.
         const snapshot = this._durable.snapshot()
         if (!snapshot.nextTurn.length && !this._wakeReserved) break
-        const turn = await this._nextTurnNumber()
-        await this.session.append('turn/start', { turn, reason: 'user' })
-        const batch = await this._durable.claimBatch()
-        this._wakeReserved = false
-        const input = batch.length ? await this._inputForBatch(batch, true) : { text: '' }
-        for (const message of batch) {
-          this._ctx.emit('agent/inbox/claimed', {
-            id: this.id,
-            agent: this,
-            message,
-            input: { text: message.text ?? '' },
-            turn,
-          })
-        }
+        // Publish the turn's abort controller before any async turn setup
+        // (numbering, turn/start write, inbox claim), so cancel() or dispose()
+        // arriving mid-setup aborts this turn instead of missing it.
         const controller = new AbortController()
         this._controller = controller
         const forward = (): void => controller.abort(signal?.reason)
         if (signal?.aborted) controller.abort(signal.reason)
         else signal?.addEventListener('abort', forward, { once: true })
+        let turn: number | undefined
         try {
+          turn = await this._nextTurnNumber()
+          if (this._disposed || controller.signal.aborted) break
+          await this.session.append('turn/start', { turn, reason: 'user' })
+          const batch = await this._durable.claimBatch()
+          this._wakeReserved = false
+          const input = batch.length ? await this._inputForBatch(batch, true) : { text: '' }
+          for (const message of batch) {
+            this._ctx.emit('agent/inbox/claimed', {
+              id: this.id,
+              agent: this,
+              message,
+              input: { text: message.text ?? '' },
+              turn,
+            })
+          }
+          if (this._disposed && !controller.signal.aborted) {
+            controller.abort({ type: 'disposed' })
+          }
           if (this._manualStreaming) {
             if (this._loop) {
               const run = await this._loop(input, { signal: controller.signal, turn })
@@ -628,7 +636,7 @@ class LiveAgentImpl implements LiveAgent {
             else await this._service.run(input, { signal: controller.signal, turn })
           }
         } catch (error) {
-          if (this._loop) await this._closeFailedCustomTurn(turn, error)
+          if (this._loop && turn !== undefined) await this._closeFailedCustomTurn(turn, error)
           if (!controller.signal.aborted) {
             const step = await this._failedStep()
             this._ctx.emit('agent/error', {

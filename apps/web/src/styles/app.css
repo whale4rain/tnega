@@ -5523,7 +5523,7 @@ input[type="radio"]:focus-visible {
 }
 
 .desktop-chrome .window-controls-header {
-  padding-right: calc(var(--window-controls-width) + 16px);
+  padding-right: calc(max(0px, var(--window-controls-width) - var(--window-controls-gap, 0px)) + 16px);
 }
 
 .desktop-chrome .app > main {

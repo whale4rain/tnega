@@ -104,7 +104,7 @@ function raw(socket: string, line: string): Promise<unknown> {
 }
 
 describe('boxd', () => {
-  it('starts, pauses, reports and stops a box through the socket', async () => {
+  it.skipIf(process.platform === 'win32')('starts, pauses, reports and stops a box through the socket', async () => {
     const { client, calls } = await serve()
     const { ref } = await client.start('machine-1', spec())
     expect(ref).toBe(boxId('machine-1'))
@@ -116,14 +116,14 @@ describe('boxd', () => {
     expect(calls).toEqual(['start machine-1', `pause ${ref}`, `stop ${ref}`])
   })
 
-  it('passes the Provider\'s error code and ref back to the server', async () => {
+  it.skipIf(process.platform === 'win32')('passes the Provider\'s error code and ref back to the server', async () => {
     const { client } = await serve()
     const refused = await client.start('machine-1', spec({ specHash: 'old' })).catch((error: unknown) => error)
     expect(refused).toBeInstanceOf(MachineError)
     expect(refused).toMatchObject({ code: 'MACHINE_SPEC_CHANGED', ref: boxId('machine-1') })
   })
 
-  it('refuses a bad ref, a bad key, an unknown verb and a malformed spec with MACHINE_INVALID', async () => {
+  it.skipIf(process.platform === 'win32')('refuses a bad ref, a bad key, an unknown verb and a malformed spec with MACHINE_INVALID', async () => {
     const { boxd, client, calls } = await serve()
     await expect(client.stop('../../etc')).rejects.toMatchObject({ code: 'MACHINE_INVALID' })
     await expect(client.status('tnega-xyz')).rejects.toMatchObject({ code: 'MACHINE_INVALID' })
@@ -271,7 +271,7 @@ describe('boxd', () => {
     })).rejects.toThrow(/may not overlap/)
   })
 
-  it('refuses a folder of an owner boxd was not told about, and a root-owned one', async () => {
+  it.skipIf(process.platform === 'win32')('refuses a folder of an owner boxd was not told about, and a root-owned one', async () => {
     const rootDir = await ownedFolder(await mkdtemp(join(tmpdir(), 'boxd-owner-')))
     cleanups.push(() => rm(rootDir, { recursive: true, force: true }))
     await ownedFolder(join(rootDir, 'mine'))
@@ -293,7 +293,7 @@ describe('boxd', () => {
     await expect(startBoxd({ socket: join(dir, 'boxd.sock'), machines: fakeMachines().machines, workspaceRoots: [], owners: [OWNER], pinRoot: join(dir, 'pins') })).rejects.toThrow(/writable by others/)
   })
 
-  it('refuses every host folder when no workspace root was given', async () => {
+  it.skipIf(process.platform === 'win32')('refuses every host folder when no workspace root was given', async () => {
     const folder = await mkdtemp(join(tmpdir(), 'boxd-folder-'))
     cleanups.push(() => rm(folder, { recursive: true, force: true }))
     const { client } = await serve()
@@ -319,7 +319,7 @@ describe('boxd', () => {
     await expect(client.status(boxId('m'))).rejects.toMatchObject({ code: 'MACHINE_UNAVAILABLE' })
   })
 
-  it('refuses to start beside a live boxd on the same socket', async () => {
+  it.skipIf(process.platform === 'win32')('refuses to start beside a live boxd on the same socket', async () => {
     const { boxd, machines, dir } = await serve()
     await expect(startBoxd({ socket: boxd.socket, machines, workspaceRoots: [], owners: [OWNER], pinRoot: join(dir, 'second-pins') })).rejects.toThrow(/another boxd/)
   })
