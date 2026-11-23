@@ -9,7 +9,7 @@ import { closeDesktopRuntime, finishDesktopShutdown } from './shutdown.js'
 import { installTray } from './tray.js'
 import { installCompletionNotice } from './completion.js'
 import { DEFAULT_TITLE_BAR_COLORS, TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS, parseTitleBarColors } from './titlebar.js'
-import { UpdateController, releasePage, type UpdaterLike } from './updater.js'
+import { DEFAULT_UPDATE_FEED, UpdateController, releasePage, type UpdaterLike } from './updater.js'
 import { readUpdateChannel, saveUpdateChannel } from './update-preferences.js'
 import { desktopPtcAssets } from './ptc-assets.js'
 import { desktopProcessLauncher } from './process-launcher.js'
@@ -27,14 +27,17 @@ let mainWindow: BrowserWindow | undefined
 
 const isMac = process.platform === 'darwin'
 
-/** Only an installed build has a release feed (`app-update.yml`) to follow. */
+/** Packaged builds follow `app-update.yml`, falling back to GitHub when an unpacked bundle omits it. */
 function createUpdates(): UpdateController {
   const updater: UpdaterLike | undefined = app.isPackaged ? electronUpdater.autoUpdater : undefined
+  const hasUpdateConfig = app.isPackaged && Boolean(process.resourcesPath) && existsSync(join(process.resourcesPath, 'app-update.yml'))
   const preferences = join(app.getPath('userData'), 'update-preferences.json')
   const controller = new UpdateController({
     version: app.getVersion(), updater,
-    // The ad-hoc signed Mac app cannot replace itself; it points at the download instead.
-    manualInstall: isMac,
+    ...(app.isPackaged && !hasUpdateConfig ? { feed: DEFAULT_UPDATE_FEED } : {}),
+    // The ad-hoc signed Mac app (and any build without `app-update.yml`) cannot replace itself;
+    // it checks the feed and points at the release download instead.
+    manualInstall: isMac || !hasUpdateConfig,
     channel: readUpdateChannel(preferences),
     saveChannel: channel => saveUpdateChannel(preferences, channel),
   })

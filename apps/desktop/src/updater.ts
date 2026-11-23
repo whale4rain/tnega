@@ -13,6 +13,21 @@
 
 export type UpdateChannel = 'stable' | 'preview'
 
+export interface UpdateFeedOptions {
+  readonly provider: 'github'
+  readonly owner: string
+  readonly repo: string
+  readonly releaseType?: 'release' | 'draft' | 'prerelease'
+}
+
+/** GitHub release feed used when a packaged build (e.g. local `--dir`) has no baked `app-update.yml`. */
+export const DEFAULT_UPDATE_FEED: UpdateFeedOptions = {
+  provider: 'github',
+  owner: 'whale4rain',
+  repo: 'tnega',
+  releaseType: 'release',
+}
+
 export type UpdateState = { channel: UpdateChannel } & (
   /** Not a packaged build (development), so there is no feed to follow. */
   | { status: 'unsupported'; version: string }
@@ -34,6 +49,7 @@ export interface UpdaterLike {
   allowDowngrade: boolean
   autoDownload: boolean
   autoInstallOnAppQuit: boolean
+  setFeedURL?(options: UpdateFeedOptions): void
   checkForUpdates(): Promise<unknown>
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void
   on(event: 'checking-for-update', listener: () => void): unknown
@@ -50,6 +66,8 @@ export interface UpdateControllerOptions {
   saveChannel?: (channel: UpdateChannel) => void
   /** `undefined` when the build cannot update itself (not packaged). */
   updater: UpdaterLike | undefined
+  /** Explicit feed config when `app-update.yml` is absent from the bundle. */
+  feed?: UpdateFeedOptions
   /** Report new releases instead of downloading and installing them. */
   manualInstall?: boolean
   /** How often to look for a new release while the app runs. Defaults to 4 hours. */
@@ -76,6 +94,7 @@ export class UpdateController {
     this.current = this.updater ? { status: 'idle', version: this.version, channel: this.channel } : { status: 'unsupported', version: this.version, channel: this.channel }
     const updater = this.updater
     if (!updater) return
+    if (options.feed) updater.setFeedURL?.(options.feed)
     this.configureChannel()
     updater.autoDownload = !options.manualInstall
     // The app exits through `app.exit()`, which skips the quit hook this relies

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, test, vi } from 'vitest'
-import { releasePage, summarizeUpdateError, UpdateController, type UpdaterLike, type UpdateState } from '../src/updater.js'
+import { DEFAULT_UPDATE_FEED, releasePage, summarizeUpdateError, UpdateController, type UpdateFeedOptions, type UpdaterLike, type UpdateState } from '../src/updater.js'
 
 class FakeUpdater extends EventEmitter implements UpdaterLike {
   channel = 'latest'
@@ -9,8 +9,12 @@ class FakeUpdater extends EventEmitter implements UpdaterLike {
   autoDownload = false
   autoInstallOnAppQuit = true
   checks = 0
+  feed: UpdateFeedOptions | undefined
   installs: Array<[boolean | undefined, boolean | undefined]> = []
   next: (() => void) | undefined
+  setFeedURL(options: UpdateFeedOptions): void {
+    this.feed = options
+  }
   checkForUpdates(): Promise<unknown> {
     this.checks += 1
     this.emit('checking-for-update')
@@ -38,6 +42,20 @@ describe('desktop self-update', () => {
     expect(await controller.check()).toMatchObject({ status: 'available', next: '0.5.2' })
     expect(releasePage('0.5.2')).toBe('https://github.com/whale4rain/tnega/releases/tag/v0.5.2')
     expect(releasePage('1/../x')).toBe('https://github.com/whale4rain/tnega/releases/tag/v1%2F..%2Fx')
+  })
+
+  test('configures the fallback GitHub feed when app-update.yml is absent from the bundle', async () => {
+    const updater = new FakeUpdater()
+    const controller = new UpdateController({
+      version: '0.5.6',
+      updater,
+      feed: DEFAULT_UPDATE_FEED,
+      manualInstall: true,
+    })
+    expect(updater.feed).toEqual(DEFAULT_UPDATE_FEED)
+    expect(updater.autoDownload).toBe(false)
+    updater.next = () => updater.emit('update-available', { version: '0.5.7' })
+    expect(await controller.check()).toEqual({ status: 'available', version: '0.5.6', next: '0.5.7', channel: 'stable' })
   })
 
   test('defaults to stable even when the installed version is a preview', () => {
