@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.8-beta.1 | [`v0.5.7...v0.5.8-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.7...v0.5.8-beta.1) | 50 |
 | 0.5.7 | [`v0.5.6...v0.5.7`](https://github.com/whale4rain/tnega/compare/v0.5.6...v0.5.7) | 95 |
 | 0.5.7-beta.2 | [`v0.5.7-beta.1...v0.5.7-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.7-beta.1...v0.5.7-beta.2) | 17 |
 | 0.5.7-beta.1 | [`v0.5.6...v0.5.7-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.6...v0.5.7-beta.1) | 77 |
@@ -72,6 +73,24 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.8-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.8-beta.1) — 2026-11-23
+
+### Features
+
+- **Umbrella design language and sliced cloud brand mark.** Rebuilt the Web and desktop UI with tonal surfaces without outer borders or shadows, hand-drawn `PenMark` cues for status, plans and asks, redesigned Sidebar, Conversation, Projects Board, Workbench and Settings, and a warmer new-session welcome with greeting, recent sessions and starter chips. Replaced the brand mark, main Agent avatar, favicon and desktop app icon with the Swiss geometric sliced cloud.
+- **`/btw` and temporary side chat.** `/btw` asks a quick question about the open session without saving it to the session log or interrupting the running Agent. The sidebar's Temporary chat opens the same throwaway chat in a Workbench tab, and the TUI displays `/btw` answers above the composer.
+- **Server Projects with per-thread boxes, schedules and lifecycle.** Project thread logs live in `ctx.sessionStore`, and `ctx.effects` runs Project routines on a Postgres schedule even when no window is open. Each Project thread runs in its own isolated box with its own repo clone, branch and pull request card, with unattended turn limits. Remembered `GITHUB_TOKEN` keys are injected for GitHub hosts by the egress proxy and threads manage PRs via GitHub's REST API rather than the host `gh` login. Idle projects unmount automatically, reconcile on server startup, and clean up thread clones and pushed branches when deleted.
+- **`tnega boxd` and Settings → Server admin page.** `tnega boxd` runs as the sole root process on a gVisor box host over a Unix socket (`TNEGA_BOXD_SOCKET`), and Settings → Server (with Account promoted to the top section) lets owners and admins manage people, devices and boxes.
+
+### Fixes
+
+- Hardened `boxd` folder pinning and mounting: opens host folders once and bind-mounts pins via `/proc/<pid>/fd` under a private pin root so `runsc` can mount them without symlink-swap races, reuses an already-running box's pin on repeated starts, enforces root/ownership and socket directory checks, and removes pins safely with `rmdir` after unmount.
+- Refined Umbrella UI and desktop chrome details: kept symmetrical bottom panel gaps on Project and welcome views, prevented Settings dialog re-renders from stealing focus or falsely marking self-saving model forms dirty, surfaced full-text search snippets in `Your turn`, prevented count badges from overflowing round Workbench tabs, and aligned desktop window chrome headers.
+
+### Other
+
+- Added Umbrella component specifications under `docs/design/umbrella/` and updated `docs/design/tnega-design.md`, `docs/design/weather-language.md` and `docs/guide/server.md`.
 
 ## [0.5.7](https://github.com/whale4rain/tnega/releases/tag/v0.5.7) — 2026-11-12
 
