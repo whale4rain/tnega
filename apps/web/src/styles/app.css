@@ -1706,7 +1706,7 @@ input[type="radio"]:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: var(--header-h);
+  height: calc(var(--control-lg) + 12px);
   flex: none;
   padding: 0 16px;
   border-bottom: 1px solid transparent;
@@ -5549,13 +5549,30 @@ input[type="radio"]:focus-visible {
   padding-right: calc(var(--window-controls-width) + 16px);
 }
 
+.desktop-chrome .app > main {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 /* The conversation header keeps only the room the window controls still take from its own end: the gap
    between its end and the window edge (--window-controls-gap, measured on every sync) grows as the
    Workbench slides in beside it, so the clearance shrinks with the fold instead of snapping by the
    controls' width a frame into it, which shifted the title area mid-slide. A bar that reaches the edge
    has a gap of 0 and takes the full room, exactly as .window-controls-header above. */
 .desktop-chrome .app .conv-header {
+  height: var(--header-h);
   padding-right: calc(16px + max(0px, var(--window-controls-width, 0px) - var(--window-controls-gap, 0px)));
+}
+
+/* Keep the header's Work pill and menu button inside the 32px desktop title bar in every density. */
+.desktop-chrome .work-pill {
+  height: var(--control);
+}
+
+.desktop-chrome .header-more {
+  width: var(--control);
+  height: var(--control);
 }
 
 /* macOS: the traffic lights sit at the top-left (TRAFFIC_LIGHTS in apps/desktop/src/titlebar.ts). */

@@ -29,19 +29,22 @@ export function Dialog({
   header?: boolean
 }) {
   const panel = useRef<HTMLDivElement>(null)
+  // Keep Escape current without re-running the mount focus effect when callers pass an inline onClose.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     const first = panel.current?.querySelector<HTMLElement>('input, textarea, select, button:not(.dialog-close)')
     first?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') closeRef.current()
     }
     document.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('keydown', onKey)
       previous?.focus?.()
     }
-  }, [onClose])
+  }, [])
   // Rendered last in <body>: above every header, and after the desktop title bar's drag regions so its
   // no-drag area wins and the buttons under the window controls' row stay clickable.
   return createPortal(

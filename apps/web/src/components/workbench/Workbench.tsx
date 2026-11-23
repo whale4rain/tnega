@@ -215,7 +215,7 @@ function ToolTab({ label, hint, icon: Icon, shape, active, count, attention, onS
       role="tab"
       aria-label={label}
       aria-selected={active}
-      className={`wb-tab ${shape}${active ? ' active' : ''}`}
+      className={`wb-tab ${shape}${shown !== undefined ? ' has-count' : ''}${active ? ' active' : ''}`}
       title={attention ? `${hint}: something waits on you` : hint}
       onClick={onSelect}
     >

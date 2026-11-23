@@ -1,5 +1,5 @@
 import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, Server, ShieldCheck, SquareTerminal, Sun, UserRound } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
 import { DISPLAY_DEFAULTS, PALETTES, type DisplayChange, type DisplayPreferences } from '../lib/display'
@@ -154,7 +154,11 @@ export function SettingsDialog({
   // Something in Models, Approvals or Tools was edited and is not saved yet. Appearance and
   // the parts that save on their own (model routes, secrets, account) are not counted.
   const [dirty, setDirty] = useState(false)
-  const markHostChange = () => { if (section === 'model' || section === 'approvals' || section === 'tools') setDirty(true) }
+  const markHostChange = (event: FormEvent<HTMLDivElement>) => {
+    if (section !== 'model' && section !== 'approvals' && section !== 'tools') return
+    if (event.target instanceof Element && event.target.closest('.model-route-form, .model-browser, .chatgpt-sign-in')) return
+    setDirty(true)
+  }
 
   const fail = (message: string, where: SectionId) => {
     setError(message)

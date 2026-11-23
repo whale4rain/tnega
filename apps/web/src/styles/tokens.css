@@ -27,7 +27,7 @@
   --text-lg: 15px;
   --text-xl: 19px;
   --text-2xl: 26px;
-  /* The new-session greeting only: a few words of welcome, in the display serif. */
+  /* The new-session greeting only: a few words of welcome, in the display font. */
   --text-3xl: 34px;
 
   /* Umbrella shapes (tnega-design §3.8): soft, concentric, never outlined. Panels 2xl, cards xl, fields lg,

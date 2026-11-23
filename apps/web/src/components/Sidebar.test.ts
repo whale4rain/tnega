@@ -256,6 +256,20 @@ it('finds sessions by what was said in them and shows the matching line', async 
   await waitFor(() => expect(view.getByText('Nothing matches “zzz”.')).toBeTruthy())
 })
 
+it('still finds a waiting session by message content and shows its matching line in Your turn', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  vi.spyOn(api, 'searchSessions').mockImplementation(async path =>
+    ({ hits: path === '/a' ? [{ id: 'ask', snippet: '…approve deploy key…' }] : [] }))
+  const { view } = renderSidebar({ sessions: [{ ...session('ask', '/a', 10), waiting: true }] })
+
+  fireEvent.change(view.getByRole('textbox', { name: 'Search sessions and projects' }), { target: { value: 'deploy' } })
+  await waitFor(() => expect(view.getByText('deploy')).toBeTruthy())
+  const yours = view.getByRole('region', { name: 'Your turn' })
+  expect(yours.textContent).toContain('Session ask')
+  expect(yours.querySelector('.session-snippet')?.textContent).toBe('…approve deploy key…')
+})
+
 it('selects several sessions, across workspaces, and deletes them together', async () => {
   vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [session('b1', '/b', 5)] })
   vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })

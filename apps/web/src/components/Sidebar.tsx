@@ -351,7 +351,16 @@ export function Sidebar({
   const waitsOnYou = (project: ProjectRecord) => !project.archived && (project.threads?.waiting ?? 0) > 0
   const yourProjects = pinned.filter(({ project }) => waitsOnYou(project))
   const yourSessions = workspaces
-    .flatMap(path => listsFor(path).sessions.filter(session => session.waiting && matchesTitle(session, q)).map(session => ({ path, session })))
+    .flatMap(path => {
+      const snippets = snippetsFor(path)
+      return listsFor(path).sessions
+        .filter(session => session.waiting && (matchesTitle(session, q) || Boolean(snippets?.has(session.id))))
+        .map(session => ({
+          path,
+          session,
+          snippet: q && !matchesTitle(session, q) ? snippets?.get(session.id) : undefined,
+        }))
+    })
     .sort((a, b) => a.session.updatedAt - b.session.updatedAt)
   const yourTurn = yourProjects.length + yourSessions.length
   const archived = pinned.filter(({ path, project }) => project.archived && !selectedPinned(path, project.id))
@@ -453,13 +462,14 @@ export function Sidebar({
                 onDelete={() => void onDeleteProject(path, project).then(deleted => { if (deleted) reload(path) })}
               />
             ))}
-            {yourSessions.map(({ path, session }) => (
+            {yourSessions.map(({ path, session, snippet }) => (
               <SessionRow
                 key={`${path}\0${session.id}`}
                 session={session}
                 path={path}
                 active={path === workspace && mode === 'sessions' && session.id === selectedId}
                 query={q}
+                snippet={snippet}
                 waited={waitedFor(session.updatedAt)}
                 onClick={() => onSelectSession(path, session.id)}
                 onFork={() => onForkSession(path, session.id)}
@@ -623,7 +633,7 @@ function SessionRow({
           </span>
           <span>{highlight(title, query)}</span>
         </span>
-        {waited && <span className="session-waited">{waited}</span>}
+        {waited && !snippet && <span className="session-waited">{waited}</span>}
         {snippet && <span className="session-snippet">{highlight(snippet, query)}</span>}
       </button>
       {!selecting && (

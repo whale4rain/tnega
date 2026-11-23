@@ -69,3 +69,16 @@ it('right-aligns number columns, header included, and leaves text columns alone'
   const cells = [...view.container.querySelectorAll('th, td')].map(cell => [cell.textContent, cell.classList.contains('num')])
   expect(cells).toEqual([['Part', false], ['Count', true], ['Ribs', false], ['8', true], ['Shaft', false], ['1,200', true]])
 })
+
+it('preserves explicit Markdown column alignment on headers and body cells', () => {
+  const view = render(createElement(Markdown, { text: '| Name | Rank | Note |\n| :--- | :---: | ---: |\n| A | 1 | ok |' }))
+  const cells = [...view.container.querySelectorAll<HTMLElement>('th, td')].map(cell => [cell.textContent, cell.style.textAlign, cell.classList.contains('num')])
+  expect(cells).toEqual([
+    ['Name', 'left', false],
+    ['Rank', 'center', false],
+    ['Note', 'right', false],
+    ['A', 'left', false],
+    ['1', 'center', false],
+    ['ok', 'right', false],
+  ])
+})

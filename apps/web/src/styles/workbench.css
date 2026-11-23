@@ -162,10 +162,16 @@
   font-weight: 600;
 }
 
-/* Tools used less are round icon buttons; the name is in the tooltip and accessible label. */
+/* Tools used less are round icon buttons; the name is in the tooltip and accessible label.
+   When one carries a count (e.g. active routines) it opens into a compact pill so the number fits. */
 .wb-tab.round {
   width: var(--button-h-sm);
   padding: 0;
+}
+
+.wb-tab.round.has-count {
+  width: auto;
+  padding: 0 10px;
 }
 
 .wb-tab.doc {
