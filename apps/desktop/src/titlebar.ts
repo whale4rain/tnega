@@ -14,9 +14,9 @@ export const TITLE_BAR_HEIGHT = 32
 
 /**
  * macOS draws its traffic lights itself, at the top-left: centred in the
- * 32px bar, inside the 72px the renderer keeps clear (`.window-controls-header-start`).
+ * 44px sidebar brand row, inside the 80px the renderer keeps clear (`.window-controls-header-start`).
  */
-export const TRAFFIC_LIGHTS = { x: 14, y: 10 } as const
+export const TRAFFIC_LIGHTS = { x: 16, y: 16 } as const
 
 export const DEFAULT_TITLE_BAR_COLORS: Readonly<Record<'light' | 'dark', TitleBarColors>> = {
   light: { background: '#f7f7f6', foreground: '#3f3f3e' },

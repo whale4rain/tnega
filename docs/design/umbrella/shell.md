@@ -34,7 +34,8 @@ The sidebar and Workbench fold by animating the grid columns (`panels-moving`). 
 
 ## Desktop title bar
 
-On the desktop app the top 32 px of each panel hosts the native window controls on the right. The header lives inside the panel, so the window controls sit on the panel's tone. The ground above the panels is the drag region.
+- **macOS (`window-controls-left`)**: traffic lights sit at the top-left inside the 44 px sidebar brand row (`TRAFFIC_LIGHTS` centred vertically). Both the conversation panel and the Workbench keep their 10 px top gap, 22 px top corners and full 44 px header height, matching the Web layout; dragging works on the sidebar brand row and panel headers.
+- **Windows and Linux**: the top 32 px hosts the native right-side window controls (`– ☐ ✕`). The main panel meets the top edge under the controls, and when the Workbench is open its top 32 px strip holds the conversation header actions beside the controls.
 
 ## Narrow windows
 

@@ -1104,13 +1104,13 @@ input[type="radio"]:focus-visible {
   transition: visibility 0s linear var(--duration-panel);
 }
 
-/* The title-bar row: level with the conversation header, the Workbench tabs and the window controls. */
+/* The brand row (umbrella/sidebar.md): 44px in compact, level with the conversation header. */
 .sidebar-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex: none;
-  height: var(--header-h);
+  height: calc(var(--control-lg) + 12px);
   padding: 0 2px 0 6px;
 }
 
@@ -1133,7 +1133,7 @@ input[type="radio"]:focus-visible {
 }
 
 .sidebar .brand-mark {
-  --size: 30px;
+  --size: 24px;
 }
 
 /*
@@ -5526,7 +5526,12 @@ input[type="radio"]:focus-visible {
   padding-right: calc(max(0px, var(--window-controls-width) - var(--window-controls-gap, 0px)) + 16px);
 }
 
-.desktop-chrome .app > main {
+/* Windows / Linux: native window controls occupy the top-right 32px overlay. */
+.desktop-chrome:not(.window-controls-left) .sidebar-top {
+  height: var(--header-h);
+}
+
+.desktop-chrome:not(.window-controls-left) .app > main {
   margin-top: 0;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
@@ -5537,28 +5542,29 @@ input[type="radio"]:focus-visible {
    Workbench slides in beside it, so the clearance shrinks with the fold instead of snapping by the
    controls' width a frame into it, which shifted the title area mid-slide. A bar that reaches the edge
    has a gap of 0 and takes the full room, exactly as .window-controls-header above. */
-.desktop-chrome .app .conv-header {
+.desktop-chrome:not(.window-controls-left) .app .conv-header {
   height: var(--header-h);
   padding-right: calc(16px + max(0px, var(--window-controls-width, 0px) - var(--window-controls-gap, 0px)));
 }
 
-/* Keep the header's Work pill and menu button inside the 32px desktop title bar in every density. */
-.desktop-chrome .work-pill {
+/* Keep the header's Work pill and menu button inside the 32px Windows/Linux title bar in every density. */
+.desktop-chrome:not(.window-controls-left) .work-pill {
   height: var(--control);
 }
 
-.desktop-chrome .header-more {
+.desktop-chrome:not(.window-controls-left) .header-more {
   width: var(--control);
   height: var(--control);
 }
 
-/* macOS: the traffic lights sit at the top-left (TRAFFIC_LIGHTS in apps/desktop/src/titlebar.ts). */
+/* macOS: the traffic lights sit at the top-left (TRAFFIC_LIGHTS in apps/desktop/src/titlebar.ts), so
+   the floating conversation and Workbench panels keep their full top gap, 22px corners and 44px header. */
 .desktop-chrome.window-controls-left {
   --window-controls-width: 0px;
 }
 
 .desktop-chrome .window-controls-header-start {
-  padding-left: 72px;
+  padding-left: 80px;
 }
 
 /* A sidebar fold carries the header to or from the macOS traffic lights mid-slide; that clearance

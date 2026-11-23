@@ -17,7 +17,7 @@ import { WorkspaceDialog } from './components/WorkspaceDialog'
 import { api } from './lib/api'
 import { errorText, folderName, useStoredState, useTheme } from './lib/hooks'
 import { useDisplay } from './lib/display'
-import { isDesktopChrome, useDesktopChrome } from './lib/desktop-chrome'
+import { isDesktopChrome, useDesktopChrome, windowControlsSide } from './lib/desktop-chrome'
 import { useHeldWhileClosing, useMediaQuery, usePanelMotion, WORKBENCH_OVERLAY_QUERY } from './lib/panels'
 import { useDesktopUpdates } from './lib/desktop-updates'
 import { UpdatingOverlay } from './components/UpdateButton'
@@ -260,7 +260,8 @@ export function App() {
   // While the panel slides out the actions stay in its title strip, which is pinned beside the window
   // controls, and move back into the header once the header reaches them: they never travel.
   const titleStripShown = useHeldWhileClosing(workbenchOpen)
-  const titleSlot = isDesktopChrome() && titleStripShown && !workbenchFloats ? titleBar : null
+  // Only Windows/Linux host native controls on the top-right; macOS keeps actions in the panel header.
+  const titleSlot = isDesktopChrome() && windowControlsSide() === 'right' && titleStripShown && !workbenchFloats ? titleBar : null
   // Both side panels stay mounted once shown, so folding them slides instead of rebuilding their content.
   // The open session, which the temporary chat offers to read.
   const openSessionSummary = mode === 'sessions' && selectedId ? sessions.find(session => session.id === selectedId) : undefined

@@ -86,24 +86,25 @@
   transition-delay: 0s;
 }
 
-/* Under the desktop title-bar row the line starts where the card does. */
-.desktop-chrome .wb-resize::after {
+/* Under the Windows/Linux title-bar row the line starts where the card does. */
+.desktop-chrome:not(.window-controls-left) .wb-resize::after {
   top: var(--header-h);
 }
 
-/* On the desktop the native window controls own the window's top line: the panel card starts under it.
+/* On Windows/Linux the native window controls own the window's top line: the panel card starts under it.
    The strip beside the controls is a drag area that holds the conversation's header actions on the
    controls' centre line. The actions are pinned to the window at exactly the spot they hold in the
-   header (its padding beside the controls), so opening, closing or sliding the panel never moves them. */
+   header (its padding beside the controls), so opening, closing or sliding the panel never moves them.
+   On macOS the traffic lights sit on the left, so the Workbench keeps its full top gap and corners. */
 .wb-titlebar { display: none; }
-.desktop-chrome .workbench { padding-top: 0; }
-.desktop-chrome .wb-titlebar {
+.desktop-chrome:not(.window-controls-left) .workbench { padding-top: 0; }
+.desktop-chrome:not(.window-controls-left) .wb-titlebar {
   display: block;
   flex: none;
   height: var(--header-h);
 }
 
-.desktop-chrome .wb-titlebar-actions {
+.desktop-chrome:not(.window-controls-left) .wb-titlebar-actions {
   position: fixed;
   top: 0;
   right: calc(var(--window-controls-width) + 16px);
@@ -791,18 +792,18 @@
     transition: transform var(--duration-panel) var(--ease-out), visibility 0s linear var(--duration-panel);
   }
 
-  /* On the desktop the floating panel starts under the title bar: the header stays whole across the
+  /* On Windows/Linux the floating panel starts under the title bar: the header stays whole across the
      window, keeps its actions beside the window controls, and no panel edge cuts through it. */
-  .desktop-chrome .workbench {
+  .desktop-chrome:not(.window-controls-left) .workbench {
     top: var(--header-h);
     padding-top: 6px;
   }
 
-  .desktop-chrome .wb-titlebar {
+  .desktop-chrome:not(.window-controls-left) .wb-titlebar {
     display: none;
   }
 
-  .desktop-chrome .wb-resize::after {
+  .desktop-chrome:not(.window-controls-left) .wb-resize::after {
     top: 6px;
   }
 }
