@@ -1,5 +1,5 @@
-import { createContext, memo, useContext, useMemo, useSyncExternalStore } from 'react'
-import { ACCENT, UMBRELLA_CANOPY, UMBRELLA_SHAFT, avatarSalt, avatarSpec, effectiveSeed, rerollAvatar, subscribeAvatars, type AvatarSpec, type Shape } from '../lib/avatar'
+import { createContext, memo, useContext, useId, useMemo, useSyncExternalStore } from 'react'
+import { ACCENT, BRAND_CLOUD, BRAND_CLOUD_CUTS_LARGE, BRAND_CLOUD_CUTS_SMALL, avatarSalt, avatarSpec, effectiveSeed, rerollAvatar, subscribeAvatars, type AvatarSpec, type Shape } from '../lib/avatar'
 import { WEATHER_LABEL, type Weather } from '../lib/weather'
 import { WeatherBack, WeatherFront } from './WeatherLayer'
 
@@ -8,11 +8,10 @@ export const AvatarSeeds = createContext<Record<string, string>>({})
 
 /**
  * A cute abstract avatar: a soft shape with two white eyes, or, for the main
- * agent (`role="coordinator"`), the brand umbrella in ink on the grey disc with
- * its eyes cut out of the canopy. `id` is the stable agent id; the same id
- * always draws the same avatar until rerolled. `weather`
- * draws the agent's state around it (see lib/weather.ts); a live avatar
- * without one is `cloudy`, i.e. thinking.
+ * agent (`role="coordinator"`), the Swiss sliced brand cloud in ink. `id` is
+ * the stable agent id; the same id always draws the same avatar until rerolled.
+ * `weather` draws the agent's state around it (see lib/weather.ts); a live
+ * avatar without one is `cloudy`, i.e. thinking.
  */
 export const AgentAvatar = memo(function AgentAvatar({
   id,
@@ -54,11 +53,8 @@ const EYE_Y: Record<Shape, number> = {
   gumdrop: 38,
   cloud: 32,
   drop: 40,
-  umbrella: 20,
+  brand: 32,
 }
-
-/** The umbrella sits inside its disc at this scale, in the brand mark's proportions. */
-const UMBRELLA_ON_DISC = 'translate(32 32) scale(0.84) translate(-32 -31)'
 
 /** Small shifts of expression that go with the weather. */
 function expression(weather: Weather | undefined): { lookUp: boolean; squint: boolean; happy: boolean } {
@@ -68,8 +64,8 @@ function expression(weather: Weather | undefined): { lookUp: boolean; squint: bo
 function AvatarSvg({ spec, size, live, title, weather }: { spec: AvatarSpec; size: number; live: boolean; title?: string | undefined; weather?: Weather | undefined }) {
   const fill = spec.color === ACCENT ? 'var(--accent)' : spec.color === 'ink' ? 'var(--avatar-ink)' : spec.color
   const mood = expression(weather)
-  const character = spec.shape === 'umbrella'
-    ? <UmbrellaCharacter spec={spec} fill={fill} mood={mood} />
+  const character = spec.shape === 'brand'
+    ? <BrandCloudCharacter fill={fill} size={size} />
     : <ShapeCharacter spec={spec} fill={fill} mood={mood} />
   return (
     <svg
@@ -118,13 +114,8 @@ function Body({ shape, rotate }: { shape: Shape; rotate: number }) {
       )
     case 'drop':
       return <path d="M32 5 C39 15 57 27 57 40 A25 25 0 0 1 7 40 C7 27 25 15 32 5 Z" />
-    case 'umbrella':
-      return (
-        <g>
-          <path d={UMBRELLA_CANOPY} />
-          <path d={UMBRELLA_SHAFT} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-        </g>
-      )
+    case 'brand':
+      return <path d={BRAND_CLOUD} />
   }
 }
 
@@ -162,39 +153,22 @@ function ShapeCharacter({ spec, fill, mood }: { spec: AvatarSpec; fill: string; 
 }
 
 /**
- * The main agent: the brand umbrella (same drawing as `--brand-umbrella` in
- * app.css) in ink on the `--disc` circle. The eyes are painted in the disc's
- * colour, so they read as cut out of the canopy. The gaze moves less than on
- * the round shapes, so the eyes stay on the canopy.
+ * The main agent: the Swiss geometric sliced brand cloud in ink, without a disc
+ * or cartoon eyes. Below 32px it uses 5 bolder bars so the horizontal slices
+ * stay crisp at avatar sizes.
  */
-function UmbrellaCharacter({ spec, fill, mood }: { spec: AvatarSpec; fill: string; mood: Mood }) {
-  const cx = 32 + spec.gazeX * 0.4
-  const cy = EYE_Y.umbrella + (mood.lookUp ? -3 : spec.gazeY * 0.5)
-  const gap = 5.5
-  const pill = mood.squint ? { h: 5, r: 2.5 } : { h: 12, r: 3 }
+function BrandCloudCharacter({ fill, size }: { fill: string; size: number }) {
+  const mask = `av-brand-${useId().replace(/:/g, '')}`
+  const cuts = size < 32 ? BRAND_CLOUD_CUTS_SMALL : BRAND_CLOUD_CUTS_LARGE
   return (
-    <>
-      <circle className="av-disc" cx="32" cy="32" r="32" fill="var(--disc)" />
-      <g transform={UMBRELLA_ON_DISC}>
-        <g className="av-body" style={{ fill, color: fill }}>
-          <Body shape="umbrella" rotate={0} />
-        </g>
-        {mood.happy
-          ? (
-            <g className="av-eyes av-eyes-happy" fill="none" stroke="var(--disc)" strokeWidth="3.4" strokeLinecap="round">
-              {[-1, 1].map(side => <path key={side} d={`M${cx + side * gap - 3.2} ${cy + 1.5} q3.2 -5 6.4 0`} />)}
-            </g>
-          )
-          : (
-            <g className="av-eyes" fill="var(--disc)">
-              {[-1, 1].map(side => (
-                <g key={side} className="av-eye">
-                  <rect x={cx + side * gap - 3} y={cy - pill.h / 2} width="6" height={pill.h} rx={pill.r} transform={`rotate(${spec.eyeTilt * 0.4} ${cx + side * gap} ${cy})`} />
-                </g>
-              ))}
-            </g>
-          )}
-      </g>
-    </>
+    <g className="av-body" style={{ fill }}>
+      <defs>
+        <mask id={mask}>
+          <path d={BRAND_CLOUD} fill="white" />
+          {cuts.ys.map(y => <rect key={y} x="0" y={y} width="64" height={cuts.height} fill="black" />)}
+        </mask>
+      </defs>
+      <rect width="64" height="64" fill={fill} mask={`url(#${mask})`} />
+    </g>
   )
 }

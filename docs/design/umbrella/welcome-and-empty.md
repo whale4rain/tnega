@@ -4,7 +4,7 @@
 
 The first screen should already say whose turn it is.
 
-1. The umbrella on its disc, large (64).
+1. The sliced brand cloud on its raised squircle tile (64).
 2. The greeting on one line in 30–34/700 display: "Good afternoon. What are we building?" The second sentence is `--text-2`.
 3. The composer pill, 620 wide.
 4. Starters as sunken pills (34, 13.5): Map the codebase, Hunt a bug, Strengthen tests, Review recent work.

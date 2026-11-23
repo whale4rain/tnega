@@ -4,7 +4,7 @@ The sidebar is where you **switch** what you are talking about. It sits on the g
 
 ## Anatomy, top to bottom
 
-1. **Brand row** (44): the umbrella on its disc (30), "tnega" in 16/700, the fold button (round, 34) at the right.
+1. **Brand row** (44): the sliced brand cloud (24), "tnega" in 16/700, the fold button (round, 34) at the right.
 2. **Start row**: one ink pill **New session** (38, fills the width) and a round sunken **+** (38) beside it. The + opens a menu with *New project*, *Temporary chat* and *Open a folder…* (adding a workspace, which used to be a footer button). One obvious way to start, the rest one click away.
 3. **Search**: a white pill (36), magnifier, "Search", and the shortcut in mono at the right. Focus raises nothing; it just shows the ink ring.
 4. **Your turn** group (only when something waits on you): sessions and projects whose agent is waiting on you, each with the `you` mark, title in 600, and how long it has waited. This group is always first, and a row in it leaves its own group, so each session or project appears once.

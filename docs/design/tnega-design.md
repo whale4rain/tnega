@@ -34,16 +34,16 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。2026-11-22 起�
 
 另外三条主张不变：界面要**安静**（导航退后，对话与产物居中）；状态要**一眼可辨**（Agent 在想、在做、在等你还是出了错，不读文字也看得出）；能力要**就在手边**（图片能直接贴进来，Agent 打开的网页就在旁边的面板里）。
 
-## 2. 标识：伞
+## 2. 标识：切片云
 
-- 品牌标志是一把**带两只眼睛的伞**（2026-11-22 起取代带眼睛的云）：伞面、伞尖、伞柄与弯钩，两只竖着的眼睛开在伞面上。它就是在 Tnega 里工作的 Agent：外面的天气（§4）落在伞上，伞下的你不被淋到。扁平、单色、无描边；笔画略不规整，像手画的，但在 16px 下仍清楚。
-- **圆片**：标志可以放在一枚中性灰圆片上（`--disc`，浅色 `#b6b6b6`），这是 favicon、安装包图标与侧栏标志的样子，也是对话里主 Agent 头像的底。圆片是排版层，伞是墨。
-- 任务栏角标（`apps/desktop/build/completion-*.png`，由 `scripts/render-completion-icons.mjs` 生成）只画天气本身——雨滴、闪电、雪花，放在小深色圆片上——任务栏上始终只有一把伞。桌面通知不闪烁任务栏按钮（Windows 把它画成橙红色，像警报），提示音是应用自己合成的两声轻音，不用系统提示音。
+- 品牌标志是一朵**瑞士几何切片云**（2026-11-23 起）：不对称双穹平底积云轮廓，被等距水平负空间切分成 6 道（≥32px，欢迎页与安装包图标）或 5 道加粗（<32px，侧栏、对话头像与 favicon）墨色横条。无卡通五官、无描边、无渐变，在 16px 到 1024px 都清晰克制。
+- **载板**：侧栏与对话主 Agent 头像直接以裸形墨色切片云落面；欢迎页（64px）与桌面端安装包图标（`apps/desktop/build/icon.svg`）放在一枚浅色圆角方片上（`--surface-raised` / `#f3f3f1` 配极淡描边）。
+- 任务栏角标（`apps/desktop/build/completion-*.png`，由 `scripts/render-completion-icons.mjs` 生成）只画天气本身——雨滴、闪电、雪花，放在小深色圆片上——任务栏上始终只有一朵云。桌面通知不闪烁任务栏按钮（Windows 把它画成橙红色，像警报），提示音是应用自己合成的两声轻音，不用系统提示音。
 - 来源：
-  - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-umbrella`（伞形遮罩）与 `--brand-eyes`（眼睛），伞用当前调色板的 `--accent` 填色（Umbrella 调色板里就是墨色），眼睛从伞面上镂空（`mask-composite: exclude`），露出背后的底色，所以在任何调色板和明暗下都看得见。
-  - 欢迎页的伞（`Welcome.tsx` 的 `WelcomeUmbrella`）：同一幅画，轻轻漂浮、偶尔眨眼、眼睛跟着指针；`prefers-reduced-motion` 下静止。改标志时与遮罩一起改。
-  - favicon：`apps/web/index.html`；安装包图标：`apps/desktop/build/icon.svg`，灰圆片上的墨色伞，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
-- 会话主 Agent 画成伞（`AgentAvatar` 的 `umbrella`，墨色伞放在 `--disc` 圆片上）；会话里的子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于区分。
+  - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-cloud`（云形遮罩）与 `--brand-cloud-cuts`（水平切片遮罩），用当前调色板的 `--accent` 填色（Umbrella 调色板里就是墨色），水平切片以 `mask-composite: exclude` 镂空，露出背后的底色，在任何调色板和明暗下都成立。
+  - 欢迎页与头像共享路径：`apps/web/src/lib/avatar.ts` 的 `BRAND_CLOUD`、`BRAND_CLOUD_CUTS_LARGE` 与 `BRAND_CLOUD_CUTS_SMALL`。欢迎页（`Welcome.tsx`）的云轻轻漂浮，`prefers-reduced-motion` 下静止。改标志时与 CSS 遮罩一起改。
+  - favicon：`apps/web/index.html`；安装包图标：`apps/desktop/build/icon.svg`，浅灰圆角方片上的 6 条墨色切片云，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
+- 会话主 Agent 画成切片云（`AgentAvatar` 的 `brand`）；会话里的子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于区分。
 - **Project 里不画 Agent 头像**（2026-10-09 起）：Project 是任务驱动的，协调者只负责转派，Thread 用标题和手绘状态记号辨认（§3.9、§5.7）。
 
 ## 3. 色彩、形状与手绘层
@@ -285,7 +285,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **密钥问题**（2026-10-26 起）：Agent 用 `ask_user_question` 的 `secret`（环境变量名，如 `GITHUB_TOKEN`）要密钥时，问题卡里是一行**隐藏输入**（复用 `.input-with-icon`：`KeyRound` 图标 · `password` 输入框，等宽字体 · 显示 / 隐藏的 `.icon-button.tiny`，`aria-pressed`），没有选项与补充文本框。下面一行 `.muted.small` 写去向（“只在这个会话里使用……命令里用 `$NAME` 读取”），右侧是 **记住** 按钮（`.button.ghost.small`，`aria-pressed`，按下时 `--accent-soft` 底、`--accent-text` 字）：按下则保存到这个工作区（重启后同一工作区的会话都能用），说明文字随之改写。值只交给宿主的密钥库，不进 Session、不回到时间线；Agent 只知道名字。设置里的 **Secrets** 分区（§9）列出名字并可移除。
 
 - **新会话的欢迎**（2026-11-12 起，`components/Welcome.tsx`；**字要少**，只有云、一句问候、输入框和一排起手式）：会话还没有消息时，`.conversation` 加 `is-welcome`，**问候与输入框在页面中间相遇**；第一条消息发出后回到“时间线在上、输入区在下”。从上到下：
-  - **活的伞**（`WelcomeUmbrella`）：64px 的品牌伞（与 `--brand-umbrella` / `--brand-eyes` 同一画法，眼睛从伞面镂空），缓慢浮动，下方柔和投影随之伸缩；和所有头像一样偶尔眨眼（`av-blink`）；眼睛跟着指针看（最多偏 3 个单位，不出伞面）。这是空闲的生气，不是天气：欢迎页不画天气。背后一团很淡的 `--accent-soft` 径向光，不是色块。`prefers-reduced-motion` 下不动。首次打开的欢迎页（没有工作区时）用同一把伞。
+  - **切片云标志**（`Welcome.tsx`）：64px 浅色圆角方片（`--surface-raised` + `--border`）上居中的 6 条墨色切片云，缓慢浮动；欢迎页不画天气。`prefers-reduced-motion` 下静止且所有欢迎元素立显。首次打开的欢迎页（没有工作区时）用同一枚标志。
   - **一句问候**：`--font-display`、`--text-3xl`、400 字重，两段：按时间的问好用 `--text`，按 Agent 类型的问句用 `--text-3`（coding “What are we building?”，work “What can I take off your plate?”，general “What’s on your mind?”；`lib/welcome.ts`）。不再写“Working in … as …”——工作区已在标题栏。
   - 输入框，下面一排居中的**描边 `.chip`**（图标 + 标题，`--control` 高），完整提示词只在 `title` 里；点一下就发出。
   - **Pick up where you left off**：这个文件夹里最近更新的 3 个会话（`WelcomeRecent`），起手式下方。不套卡片：一行 `--text-3` `--text-sm` 小标签，下面是普通行（`History` 图标 · 标题 `--text-2` · 右侧 `--text-3` 相对时间），悬停 `--surface-hover`，点开该会话。没有会话就整段不显示；窗口矮（≤640px）时也不显示。
@@ -534,6 +534,6 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 1. 没有裸色值、裸字号、裸控件高度；颜色只改 `tokens.css`，**所有调色板的两种模式**同步，并跑对比度测试。
 2. 在真实页面里至少看过：浅色与深色；Umbrella 与另一个调色板；Large 字号 + Comfortable 密度。截图与校准用 `/weather.html` 和真实页面，不用脱离实现的效果图。
 3. 新图形沿用 Umbrella 的两层：排版层是精确的扁平形状、无外框、无阴影；表达状态或重点的笔迹只用 `PenMark` / `.pen-underline`，只画在形状里面（§3.8、§3.9）。
-4. 改标志时同步改 `--brand-umbrella` / `--brand-eyes`、`WelcomeUmbrella`、`AgentAvatar` 的伞、favicon 与 `apps/desktop/build/icon.svg`，并重新生成安装包图标。
+4. 改标志时同步改 `--brand-cloud` / `--brand-cloud-cuts`、`BRAND_CLOUD`、`Welcome.tsx`、`AgentAvatar.tsx`、favicon 与 `apps/desktop/build/icon.svg`，并重新生成安装包图标。
 5. 测试与源文件同目录，覆盖用户可见的行为；跑 `pnpm exec vitest run apps/web`。改了颜色跑 `contrast.test.ts`，改了玻璃或新增浮层跑 `glass.test.ts`。
 6. 用户可见的变化写在 PR 描述里，不改 `CHANGELOG.md`（由发布准备 PR 统一写入）；改变了设计规则的，同一次改动里更新本文。

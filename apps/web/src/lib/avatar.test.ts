@@ -13,14 +13,14 @@ describe('avatarSpec', () => {
     }
   })
 
-  it('draws every main agent as the ink umbrella, and never gives a sub-agent the umbrella', () => {
+  it('draws every main agent as the ink brand cloud, and never gives a sub-agent the brand cloud', () => {
     for (let i = 0; i < 20; i += 1) {
       const spec = avatarSpec(`project-${i}`, 'coordinator')
-      expect(spec.shape).toBe('umbrella')
+      expect(spec.shape).toBe('brand')
       expect(spec.color).toBe(ACCENT)
     }
-    expect(SHAPES).not.toContain('umbrella')
-    expect(Array.from({ length: 60 }, (_, i) => avatarSpec(`agent-${i}`).shape)).not.toContain('umbrella')
+    expect(SHAPES).not.toContain('brand')
+    expect(Array.from({ length: 60 }, (_, i) => avatarSpec(`agent-${i}`).shape)).not.toContain('brand')
   })
 
   it('uses the plain id until rerolled', () => {

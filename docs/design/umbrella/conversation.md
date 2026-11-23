@@ -16,7 +16,7 @@ Everything in a turn hangs from one left edge, reads at 15 on 24, and is boxed o
         ┌ result card (white, r16) ┐                  ← only results are boxed
 ```
 
-- The **umbrella disc** (26) marks who is speaking, once per turn, top-aligned with the first line. Subagents use their own avatar on the disc.
+- The **sliced brand cloud** (26) marks who is speaking, once per turn, top-aligned with the first line. Subagents use their own avatar.
 - The parts of a turn are 12 apart; turns are 24 apart.
 - **Results** (changed files, a PR, an image, a created file, a subagent's report) are white cards, radius 16, padding 12 14: a 24 mark, a 600 title, meta in `--text-3`, and an action word at the right ("Review ›"). A diff preview inside uses a sunken mono block (radius 10).
 

@@ -30,7 +30,7 @@ Sizes: **16** in lists and lines (simplified strokes), **20** in work rows, **28
 - **Underline** (`.pen-underline`): a hand stroke under at most two or three words that matter in a sentence, such as "needs you" or "writes outside the sandbox". At most one per card.
 - **Hatching**: inside progress bars and inside the `working` mark. A hatched bar is the only progress bar.
 - **Drawn arrows**: in empty states only, pointing at the one thing to do.
-- **The logo**: the umbrella with eyes.
+- **The logo**: lives on the layout layer (the Swiss geometric sliced cloud), not the hand layer.
 
 ## What the pen may never draw
 

@@ -355,50 +355,35 @@ kbd {
 }
 
 /* ==========================================================================
-   Brand mark — the Tnega umbrella with two eyes on its canopy: the agent
-   itself, the same umbrella the main agent avatar draws. Weather falls on it.
+   Brand mark — the Tnega Swiss sliced cloud: geometric horizontal bars cut
+   through an asymmetric cumulus silhouette, matching the main agent avatar.
    ========================================================================== */
 
 .brand-mark {
-  --size: 22px;
+  --size: 24px;
   display: inline-block;
   flex: none;
   width: var(--size);
   height: var(--size);
   /*
-   * The umbrella is a mask filled with the palette's accent (ink in Umbrella),
-   * and the eyes are cut out of the canopy, so they show whatever is behind
-   * the mark and work in every palette and mode. The favicon and app icon
-   * are the ink umbrella on the grey --disc (see .brand-mark.disc).
+   * The cloud silhouette is a mask filled with the palette's accent (ink in
+   * Umbrella), sliced by crisp horizontal bars so the surface behind shows
+   * through cleanly in every palette and mode.
    */
   background: var(--accent);
-  -webkit-mask: var(--brand-eyes) center / contain no-repeat, var(--brand-umbrella) center / contain no-repeat;
+  -webkit-mask: var(--brand-cloud-cuts) center / contain no-repeat, var(--brand-cloud) center / contain no-repeat;
   -webkit-mask-composite: xor;
-  mask: var(--brand-eyes) center / contain no-repeat exclude, var(--brand-umbrella) center / contain no-repeat;
+  mask: var(--brand-cloud-cuts) center / contain no-repeat exclude, var(--brand-cloud) center / contain no-repeat;
 }
 
-/* The mark on its neutral disc (§2 of the design guide): the disc is the layout layer, the umbrella is ink. */
+/* Sidebar lockup uses the bare sliced cloud directly on the ground — clean and crisp at 24px. */
 .brand-mark.disc {
-  position: relative;
-  border-radius: var(--radius-full);
-  background: var(--disc);
-  -webkit-mask: none;
-  mask: none;
-}
-
-.brand-mark.disc::before {
-  content: '';
-  position: absolute;
-  inset: 8%;
-  background: var(--accent);
-  -webkit-mask: var(--brand-eyes) center / contain no-repeat, var(--brand-umbrella) center / contain no-repeat;
-  -webkit-mask-composite: xor;
-  mask: var(--brand-eyes) center / contain no-repeat exclude, var(--brand-umbrella) center / contain no-repeat;
+  --size: 24px;
 }
 
 :root {
-  --brand-umbrella: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M6.5 32.5C7.5 17.5 18.5 8.5 32 8.5S56.5 17.5 57.5 31.5C53.5 28.2 48.2 28.4 44.8 32.2C41.2 28.4 35.6 28.4 32 32.4C28.4 28.4 22.8 28.4 19.2 32.2C15.8 28.6 10.4 28.6 6.5 32.5Z'/%3E%3Cpath d='M32 9V4.6M32 31.5L31.6 50.5C32 56.5 24.6 57 23.6 51.5' fill='none' stroke='%23000' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E");
-  --brand-eyes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%23fff'%3E%3Crect x='23.5' y='14' width='6' height='12' rx='3'/%3E%3Crect x='34.5' y='14' width='6' height='12' rx='3'/%3E%3C/g%3E%3C/svg%3E");
+  --brand-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M16.5 50 A9.5 9.5 0 0 1 12.99 31.67 A14 14 0 0 1 38.32 20.49 A10.5 10.5 0 0 1 51.88 32.07 A9.5 9.5 0 0 1 47.5 50 Z'/%3E%3C/svg%3E");
+  --brand-cloud-cuts: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%23fff'%3E%3Crect x='0' y='19.2' width='64' height='2.5'/%3E%3Crect x='0' y='26.9' width='64' height='2.5'/%3E%3Crect x='0' y='34.6' width='64' height='2.5'/%3E%3Crect x='0' y='42.3' width='64' height='2.5'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .brand-mark.small {
@@ -2437,21 +2422,22 @@ input[type="radio"]:focus-visible {
   color: var(--text-2);
 }
 
-/* The umbrella on its disc, 64 (welcome-and-empty.md); the eyes blink and follow the pointer. */
+/* The Swiss sliced cloud on a crisp raised squircle tile (64px). */
 .welcome-umbrella {
   position: relative;
   display: grid;
   place-items: center;
   width: 64px;
   height: 64px;
-  border-radius: var(--radius-full);
-  background: var(--disc);
+  border-radius: 18px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
 }
 
 .welcome-umbrella svg {
   display: block;
-  width: 46px;
-  height: 46px;
+  width: 50px;
+  height: 50px;
   overflow: visible;
   animation: welcome-float 6s ease-in-out infinite;
 }
@@ -2460,25 +2446,13 @@ input[type="radio"]:focus-visible {
   fill: var(--accent);
 }
 
-.welcome-umbrella-look {
-  transform: translate(var(--look-x, 0), var(--look-y, 0));
-  transition: transform var(--duration-med) var(--ease-out);
-}
-
-.welcome-umbrella-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-  /* The same blink as every agent avatar: idle life, not a state. */
-  animation: av-blink 6s 1.2s infinite;
-}
-
 @keyframes welcome-float {
   50% { transform: translateY(-2px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .welcome-umbrella svg,
-  .welcome-umbrella-eyes { animation: none; }
+  .welcome-beat { animation: none !important; }
 }
 
 @media (max-height: 640px) {

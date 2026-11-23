@@ -45,7 +45,7 @@ Tnega 是一个 Agent Harness。核心包将可组合插件生命周期、Agent 
 - 颜色只来自 `apps/web/src/styles/tokens.css`，组件不写裸色值；字号只用 `--text-*`、控件与行高只用密度 token。每个调色板的深浅两份同步修改，并通过 `apps/web/src/styles/contrast.test.ts` 的对比度底线（正文 ≥7:1，所有文字角色在所有面上 ≥4.5:1）。
 - Agent 的状态用天气表达，一种天气只有一个含义（见 `apps/web/src/lib/weather.ts`）；新增状态先归入已有天气，不给同一天气赋第二个含义；动效遵循 `prefers-reduced-motion`。
 - 设计语言是 **Umbrella**（规范 §1–§3.9）：排版层精确、平、无外框无阴影，层级靠色调；手绘层只用 `PenMark` 标出要紧的事，只画在形状里面。
-- 标识是「带眼睛的伞」（与主 Agent 头像同形）：改标志时同步 `--brand-umbrella` / `--brand-eyes`、`WelcomeUmbrella`、`AgentAvatar` 的伞、favicon 与 `apps/desktop/build/icon.svg`，并用 `apps/desktop/scripts/render-icon.mjs` 重新生成安装包图标。
+- 标识是「瑞士几何切片云」（与主 Agent 头像同形）：改标志时同步 `--brand-cloud` / `--brand-cloud-cuts`、`BRAND_CLOUD`（`apps/web/src/lib/avatar.ts`）、`Welcome.tsx`、`AgentAvatar.tsx`、favicon 与 `apps/desktop/build/icon.svg`，并用 `apps/desktop/scripts/render-icon.mjs` 重新生成安装包图标。
 - 文件、改动、终端、浏览器与从对话打开的文档都放在右侧**工作台**（`apps/web/src/components/workbench/`），共用「标签栏 → 工具栏行 → 圆角卡片」的形状（见设计规范 5.3）；新增此类能力时加成工作台的工具或文档标签，不再新开抽屉。
 - Agent 浏览器在两端都显示在工作台的 Browser 工具里（桌面原生视图 / Web 端 screencast），不弹独立窗口。
 

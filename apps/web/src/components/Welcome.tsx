@@ -12,11 +12,11 @@ import {
   Telescope,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useId, useRef, type CSSProperties } from 'react'
+import { useId, type CSSProperties } from 'react'
 import { relativeTime } from '../lib/hooks'
 import type { AgentType, SessionSummary } from '../lib/types'
-import { UMBRELLA_CANOPY, UMBRELLA_SHAFT } from '../lib/avatar'
-import { eyeOffset, recentSessions, welcomeGreeting } from '../lib/welcome'
+import { BRAND_CLOUD, BRAND_CLOUD_CUTS_LARGE } from '../lib/avatar'
+import { recentSessions, welcomeGreeting } from '../lib/welcome'
 import { PenMark, type PenKind } from './PenMark'
 
 interface Starter {
@@ -54,53 +54,22 @@ function beat(index: number): CSSProperties {
 }
 
 /**
- * The brand umbrella, alive: it floats, blinks now and then, and its eyes follow
- * the pointer. Same drawing as `--brand-umbrella` / `--brand-eyes` in app.css (the
- * eyes are cut out of the canopy, so they show the page behind it in every palette);
- * change them together. Still when reduced motion is asked for.
+ * The Tnega sliced brand cloud on a matte raised squircle tile: clean Swiss
+ * geometry, gently floating. Still when reduced motion is asked for.
  */
 export function WelcomeUmbrella() {
-  const svg = useRef<SVGSVGElement>(null)
-  const mask = `welcome-umbrella-${useId().replace(/:/g, '')}`
-  useEffect(() => {
-    const node = svg.current
-    if (!node || typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    let frame = 0
-    let pointer: { x: number; y: number } | undefined
-    const look = () => {
-      frame = 0
-      const box = node.getBoundingClientRect()
-      const { x, y } = pointer ? eyeOffset(pointer.x - (box.left + box.width / 2), pointer.y - (box.top + box.height / 2)) : { x: 0, y: 0 }
-      node.style.setProperty('--look-x', `${x.toFixed(2)}px`)
-      node.style.setProperty('--look-y', `${y.toFixed(2)}px`)
-    }
-    const schedule = () => { if (!frame) frame = requestAnimationFrame(look) }
-    const move = (event: PointerEvent) => { pointer = { x: event.clientX, y: event.clientY }; schedule() }
-    const rest = () => { pointer = undefined; schedule() }
-    window.addEventListener('pointermove', move, { passive: true })
-    document.documentElement.addEventListener('pointerleave', rest)
-    window.addEventListener('blur', rest)
-    return () => {
-      if (frame) cancelAnimationFrame(frame)
-      window.removeEventListener('pointermove', move)
-      document.documentElement.removeEventListener('pointerleave', rest)
-      window.removeEventListener('blur', rest)
-    }
-  }, [])
-
+  const mask = `welcome-brand-${useId().replace(/:/g, '')}`
   return (
     <div className="welcome-umbrella" aria-hidden>
-      <svg ref={svg} viewBox="0 0 64 64" focusable="false">
-        <mask id={mask}>
-          <path d={UMBRELLA_CANOPY} fill="white" />
-          <path d={UMBRELLA_SHAFT} fill="none" stroke="white" strokeWidth="4" strokeLinecap="round" />
-          <g className="welcome-umbrella-look">
-            <g className="welcome-umbrella-eyes" fill="black">
-              <rect x="23.5" y="14" width="6" height="12" rx="3" />
-              <rect x="34.5" y="14" width="6" height="12" rx="3" />
-            </g>
-          </g>
-        </mask>
+      <svg viewBox="0 0 64 64" focusable="false">
+        <defs>
+          <mask id={mask}>
+            <path d={BRAND_CLOUD} fill="white" />
+            {BRAND_CLOUD_CUTS_LARGE.ys.map(y => (
+              <rect key={y} x="0" y={y} width="64" height={BRAND_CLOUD_CUTS_LARGE.height} fill="black" />
+            ))}
+          </mask>
+        </defs>
         <rect className="welcome-umbrella-body" width="64" height="64" mask={`url(#${mask})`} />
       </svg>
     </div>
