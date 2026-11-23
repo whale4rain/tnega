@@ -86,7 +86,6 @@
 /* The project panel lives in the Workbench, like a session's (Board, Library, Routines, threads). */
 .project-main {
   min-height: 0;
-  height: 100%;
 }
 
 /* --- the work row (umbrella/work.md) ------------------------------------- */

@@ -1070,9 +1070,12 @@ input[type="radio"]:focus-visible {
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
-  height: 100%;
   padding: var(--space-8);
   text-align: center;
+}
+
+.splash {
+  height: 100%;
 }
 
 .splash h1,
