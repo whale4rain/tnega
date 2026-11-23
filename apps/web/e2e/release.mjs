@@ -196,10 +196,10 @@ try {
         await page.getByRole('dialog').waitFor({ state: 'detached' })
         await page.getByRole('complementary', { name: 'Workspaces', exact: true }).getByText('workspace', { exact: true }).waitFor()
         assert.equal(await page.evaluate(() => localStorage.getItem('tnega.workspace')), workspace)
-        // A new session greets in the display serif, like the Board.
-        const greeting = page.locator('.empty-state h2')
+        // A new session greets in the display font (Geist 700), like the Board.
+        const greeting = page.locator('.welcome-greeting')
         await greeting.waitFor()
-        assert.match(await greeting.evaluate(element => getComputedStyle(element).fontFamily), /Fraunces/)
+        assert.match(await greeting.evaluate(element => getComputedStyle(element).fontFamily), /Geist/)
         await page.screenshot({ path: resolve(artifacts, `new-session-${theme}.png`) })
       })
 
@@ -278,7 +278,7 @@ try {
         await rail.getByRole('tab', { name: 'Files', exact: true }).click()
         await page.getByRole('treeitem', { name: /docs/ }).click()
         await page.getByRole('treeitem', { name: /brief\.md/ }).click()
-        await page.locator('.cm-content').getByText('# Short writing brief', { exact: true }).waitFor()
+        await page.locator('.wb-detail').getByRole('heading', { name: 'Short writing brief', exact: true }).waitFor()
         await rail.getByRole('tab', { name: 'Changes', exact: true }).click()
         await rail.getByRole('tab', { name: 'Browser', exact: true }).click()
         const handle = page.getByRole('separator', { name: 'Resize workbench', exact: true })
@@ -292,8 +292,11 @@ try {
         await page.mouse.down()
         await page.mouse.move(box.x - 80, box.y + 300, { steps: 4 })
         await page.mouse.up()
-        const after = await page.locator('.workbench').evaluate(element => element.getBoundingClientRect().width)
-        assert(after > before + 40, `Dragging widens the Workbench: ${before} → ${after}`)
+        let after = before
+        await waitFor(async () => {
+          after = await page.locator('.workbench').evaluate(element => element.getBoundingClientRect().width)
+          return after > before + 40
+        }, `Dragging widens the Workbench: ${before} → ${after}`)
         assert.equal(await handle.evaluate(element => element.classList.contains('is-dragging')), false, 'The drag line clears on release')
         await page.screenshot({ path: resolve(artifacts, `workbench-${theme}.png`) })
         await page.keyboard.press('Control+j')
@@ -307,19 +310,26 @@ try {
         await dialog.getByRole('tab', { name: 'Models', exact: true }).click()
         const route = dialog.locator('.model-route.is-default')
         await route.getByText('Fixture model', { exact: true }).waitFor()
-        assert.equal(await route.evaluate(element => getComputedStyle(element).borderTopColor), await token(page, '--border-strong'))
+        await route.locator('.model-route-default').getByText('Default', { exact: true }).waitFor()
+        assert.equal(await route.evaluate(element => getComputedStyle(element).borderTopStyle), 'none')
         await dialog.getByRole('tab', { name: 'Appearance', exact: true }).click()
         const palettes = await dialog.locator('.palette-card').count()
-        assert(palettes >= 5, `Every palette is offered: ${palettes}`)
+        assert(palettes >= 6, `Every palette is offered: ${palettes}`)
         for (let index = 0; index < palettes; index++) {
           const card = dialog.locator('.palette-card').nth(index)
           await card.click()
           const name = await page.locator('html').getAttribute('data-palette')
           assert.equal(await card.evaluate(element => element.classList.contains('active')), true, `${name} shows as selected`)
-          assert.equal(await card.evaluate(element => getComputedStyle(element).borderTopColor), await token(page, '--border-strong'))
+          assert.notEqual(await card.evaluate(element => getComputedStyle(element).boxShadow), 'none', `${name} shows the inset selection ring`)
         }
-        await dialog.locator('.palette-card').filter({ hasText: 'Carbon' }).click()
-        assert.equal(await page.locator('html').getAttribute('data-palette'), 'carbon')
+        await dialog.locator('.palette-card').filter({ hasText: 'Umbrella' }).click()
+        assert.equal(await page.locator('html').getAttribute('data-palette'), 'umbrella')
+        // System lives in Settings -> Appearance; Playwright's default colour scheme is light.
+        const modeGroup = dialog.getByRole('radiogroup', { name: 'Mode', exact: true })
+        await modeGroup.getByRole('radio', { name: 'System', exact: true }).click()
+        await waitFor(async () => await page.locator('html').getAttribute('data-theme') === 'light', 'system theme')
+        await modeGroup.getByRole('radio', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true }).click()
+        await waitFor(async () => await page.locator('html').getAttribute('data-theme') === theme, `${theme} theme restored`)
         await dialog.screenshot({ path: resolve(artifacts, `settings-${theme}.png`) })
         await dialog.getByRole('button', { name: 'Close', exact: true }).click()
         await dialog.waitFor({ state: 'detached' })
@@ -333,10 +343,6 @@ try {
           await waitFor(async () => await page.locator('html').getAttribute('data-theme') === value, `${value} theme`)
           assert.equal(await group.getByRole('radio', { name: label(value), exact: true }).getAttribute('aria-checked'), 'true')
         }
-        // System follows the device; Playwright's default colour scheme is light.
-        await group.getByRole('radio', { name: 'System', exact: true }).click()
-        await waitFor(async () => await page.locator('html').getAttribute('data-theme') === 'light', 'system theme')
-        await group.getByRole('radio', { name: label(theme), exact: true }).click()
       })
 
       assert.deepEqual(errors, [], `${theme}: unhandled browser exceptions`)
@@ -355,14 +361,10 @@ try {
       const main = page.locator('.project-main')
       await main.getByRole('heading', { name: 'Writing site', exact: true }).waitFor()
 
-      await check(`${theme}: the Board greets, lists what needs you and opens threads`, async () => {
-        const board = page.locator('.wb-card').filter({ has: page.locator('.board-greeting, h1, h2') }).first()
+      await check(`${theme}: the Board names the project, lists what needs you and opens threads`, async () => {
         await page.getByRole('tab', { name: /^Board/ }).click()
-        const greeting = page.locator('.board-greeting').first()
-        await greeting.waitFor()
-        assert.match(await greeting.evaluate(element => getComputedStyle(element).fontFamily), /Fraunces/)
-        await page.getByText('Needs you', { exact: true }).waitFor()
-        assert(await board.count() >= 0)
+        await page.locator('.board-title').first().waitFor()
+        await page.getByRole('region', { name: 'Your turn' }).first().waitFor()
         await noOverflow(page)
         await page.screenshot({ path: resolve(artifacts, `board-${theme}.png`) })
       })
@@ -373,12 +375,13 @@ try {
         await page.getByText('Done. The headings are shorter.', { exact: true }).waitFor()
         assert.equal(new URL(page.url()).hash, '#p/project/writer')
         assert.equal(await card.getAttribute('aria-pressed'), 'true')
-        const border = await card.evaluate(element => getComputedStyle(element).borderTopColor)
-        assert.equal(border, await token(page, '--border-strong'), 'The open thread is not ringed with the accent')
-        assert.notEqual(border, await token(page, '--accent'))
+        // The open thread's card is tinted, never ringed (umbrella/work.md).
+        const ring = await card.evaluate(element => getComputedStyle(element.closest('.thread-card')).outlineStyle)
+        assert.equal(ring, 'none', 'The open thread is ringed')
+        assert.match(await card.evaluate(element => element.closest('.thread-card').className), /\bactive\b/)
         await page.screenshot({ path: resolve(artifacts, `thread-${theme}.png`) })
         await page.getByRole('button', { name: 'Back to the Board', exact: true }).click()
-        await page.locator('.board-greeting').first().waitFor()
+        await page.locator('.board-title').first().waitFor()
         await page.getByRole('button', { name: 'Close Content Writer', exact: true }).click()
         assert.equal(await card.getAttribute('aria-pressed'), 'false')
       })
@@ -471,9 +474,8 @@ try {
       await installReleaseFixtures(context, { firstRun: false })
       const errors = []
       context.on('page', page => page.on('pageerror', error => errors.push(error.message)))
-      const page = await open(context, { theme, hash: '#session-fixture' })
+      const page = await open(context, { theme, mode: 'projects', hash: '#p/project' })
       await check(`${theme}: a new session after a project keeps the layout inside the window`, async () => {
-        await page.goto(`${origin}/#p/project`)
         await page.locator('.project-main').getByRole('heading', { name: 'Writing site', exact: true }).waitFor()
         // Folding the Workbench and leaving the project drops its tabs; the rail must not drag the frame along.
         await page.getByRole('button', { name: 'Hide panel', exact: true }).click()

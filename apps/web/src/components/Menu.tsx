@@ -1,6 +1,47 @@
-import { Check, ChevronDown } from 'lucide-react'
-import { useRef, useState, type ReactNode } from 'react'
+import { ChevronDown } from 'lucide-react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { useDismiss } from '../lib/hooks'
+import { PenMark } from './PenMark'
+
+const ITEM_SELECTOR = '[role="menuitem"]:not(:disabled), [role="option"]:not(:disabled)'
+
+/**
+ * Keyboard for every popover list (controls.md): opening focuses the current or first item,
+ * arrows and Home / End move, Enter picks (a native button), and closing returns focus to
+ * the trigger.
+ */
+function useMenuKeys(open: boolean, popover: RefObject<HTMLDivElement | null>, trigger: RefObject<HTMLButtonElement | null>) {
+  const wasOpen = useRef(false)
+  useEffect(() => {
+    if (open) {
+      const items = popover.current ? [...popover.current.querySelectorAll<HTMLElement>(ITEM_SELECTOR)] : []
+      const current = items.find(item => item.getAttribute('aria-selected') === 'true') ?? items[0]
+      current?.focus({ preventScroll: true })
+    } else if (wasOpen.current && popover.current === null) {
+      const active = document.activeElement
+      if (active === null || active === document.body) trigger.current?.focus({ preventScroll: true })
+    }
+    wasOpen.current = open
+  }, [open])
+  return (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = [...event.currentTarget.querySelectorAll<HTMLElement>(ITEM_SELECTOR)]
+    if (items.length === 0) return
+    const index = items.findIndex(item => item === document.activeElement)
+    const next = event.key === 'ArrowDown' ? (index + 1) % items.length
+      : event.key === 'ArrowUp' ? (index <= 0 ? items.length - 1 : index - 1)
+        : event.key === 'Home' ? 0
+          : event.key === 'End' ? items.length - 1
+            : undefined
+    if (next === undefined) return
+    event.preventDefault()
+    items[next]?.focus()
+  }
+}
+
+/** The chosen item in a list: the hand tick, as everywhere a choice is marked. */
+function ChosenMark({ chosen }: { chosen: boolean }) {
+  return <span className="menu-check">{chosen && <PenMark kind="done" size={16} />}</span>
+}
 
 export interface MenuItem {
   key: string
@@ -30,10 +71,14 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+  const popover = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
   useDismiss(open, root, () => setOpen(false))
+  const onKeyDown = useMenuKeys(open, popover, button)
   return (
     <div className="menu-root" ref={root}>
       <button
+        ref={button}
         type="button"
         className={className ?? 'icon-button'}
         aria-label={label}
@@ -48,7 +93,7 @@ export function Menu({
         {trigger}
       </button>
       {open && (
-        <div className={`menu-popover align-${align} side-${side}`} role="menu">
+        <div ref={popover} className={`menu-popover align-${align} side-${side}`} role="menu" aria-label={label} onKeyDown={onKeyDown}>
           {items.map((item, index) => item === 'separator'
             ? <div key={`sep-${index}`} className="menu-separator" role="separator" />
             : (
@@ -93,6 +138,7 @@ export function Choice<T extends string>({
   disabled,
   side = 'top',
   align = 'start',
+  plain = false,
 }: {
   value: T
   options: ReadonlyArray<ChoiceOption<T>>
@@ -102,16 +148,21 @@ export function Choice<T extends string>({
   disabled?: boolean
   side?: 'top' | 'bottom'
   align?: 'start' | 'end'
+  /** A quiet word with a caret and no icon (Umbrella: choices read as words, not tools). */
+  plain?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+  const popover = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
   useDismiss(open, root, () => setOpen(false))
+  const onKeyDown = useMenuKeys(open, popover, button)
   const current = options.find(option => option.value === value) ?? options[0]
   return (
     <div className="menu-root" ref={root}>
       <button
         type="button"
-        className={`chip${current?.tone === 'danger' ? ' chip-danger' : ''}`}
+        className={`${plain ? 'word-choice' : 'chip'}${current?.tone === 'danger' ? ' chip-danger' : ''}`}
         aria-label={`${label}: ${current?.label ?? ''}`}
         title={label}
         aria-haspopup="listbox"
@@ -119,12 +170,12 @@ export function Choice<T extends string>({
         disabled={disabled}
         onClick={() => setOpen(v => !v)}
       >
-        {current?.icon ?? icon}
+        {!plain && (current?.icon ?? icon)}
         <span>{current?.label}</span>
         <ChevronDown size={12} className="chip-caret" />
       </button>
       {open && (
-        <div className={`menu-popover align-${align} side-${side} menu-wide menu-scroll`} role="listbox" aria-label={label}>
+        <div ref={popover} className={`menu-popover align-${align} side-${side} menu-wide menu-scroll`} role="listbox" aria-label={label} onKeyDown={onKeyDown}>
           <div className="menu-heading">{label}</div>
           {options.map(option => (
             <button
@@ -143,7 +194,7 @@ export function Choice<T extends string>({
                 <span className="menu-item-label">{option.label}</span>
                 {option.description && <span className="menu-option-desc">{option.description}</span>}
               </span>
-              <span className="menu-check">{option.value === value && <Check size={14} />}</span>
+              <ChosenMark chosen={option.value === value} />
             </button>
           ))}
         </div>
@@ -205,6 +256,7 @@ export function SectionChoice({
   side = 'top',
   align = 'start',
   action,
+  plain = false,
 }: {
   label: string
   summary: string
@@ -215,15 +267,20 @@ export function SectionChoice({
   side?: 'top' | 'bottom'
   align?: 'start' | 'end'
   action?: { label: string; onSelect: () => void }
+  /** A quiet word with a caret and no icon. */
+  plain?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+  const popover = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
   useDismiss(open, root, () => setOpen(false))
+  const onKeyDown = useMenuKeys(open, popover, button)
   return (
     <div className="menu-root" ref={root}>
       <button
         type="button"
-        className={`chip${tone === 'danger' ? ' chip-danger' : ''}`}
+        className={`${plain ? 'word-choice' : 'chip'}${tone === 'danger' ? ' chip-danger' : ''}`}
         aria-label={`${label}: ${summary}`}
         title={label}
         aria-haspopup="listbox"
@@ -231,12 +288,12 @@ export function SectionChoice({
         disabled={disabled}
         onClick={() => setOpen(v => !v)}
       >
-        {icon}
+        {!plain && icon}
         <span>{summary}</span>
         <ChevronDown size={12} className="chip-caret" />
       </button>
       {open && (
-        <div className={`menu-popover align-${align} side-${side} menu-wide menu-scroll`} role="listbox" aria-label={label}>
+        <div ref={popover} className={`menu-popover align-${align} side-${side} menu-wide menu-scroll`} role="listbox" aria-label={label} onKeyDown={onKeyDown}>
           {sections.map((section, index) => (
             <div key={section.key} className="menu-section" role="group" aria-label={section.label}>
               {index > 0 && <div className="menu-separator" role="separator" />}
@@ -258,7 +315,7 @@ export function SectionChoice({
                     <span className="menu-item-label">{item.label}</span>
                     {item.description && <span className="menu-option-desc">{item.description}</span>}
                   </span>
-                  <span className="menu-check">{item.selected && <Check size={14} />}</span>
+                  <ChosenMark chosen={item.selected} />
                 </button>
               ))}
             </div>

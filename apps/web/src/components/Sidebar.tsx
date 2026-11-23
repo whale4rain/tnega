@@ -8,12 +8,12 @@ import {
   FolderPlus,
   GitBranch,
   Link,
-  Monitor,
   Moon,
   ListChecks,
   MessageCircleDashed,
   MoreHorizontal,
   PanelLeftClose,
+  Plus,
   Search,
   Settings,
   SquarePen,
@@ -36,6 +36,8 @@ import { UpdateButton } from './UpdateButton'
 import type { DesktopUpdates } from '../lib/desktop-updates'
 
 /** Sessions shown per workspace, and projects under Pinned, before "N more". */
+/** The shortcut that focuses search, as this platform writes it. */
+const MOD = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 const VISIBLE_SESSIONS = 8
 const VISIBLE_PROJECTS = 8
 const COLLAPSED_KEY = 'tnega.sidebar.collapsed'
@@ -345,8 +347,24 @@ export function Sidebar({
     .filter(({ project }) => !q || project.name.toLowerCase().includes(q))
     .sort((a, b) => b.project.updatedAt - a.project.updatedAt)
   const selectedPinned = (path: string, id: string) => path === workspace && mode === 'projects' && id === selectedProjectId
+  // Anything whose agent waits on you rises into Your turn, above everything else, and leaves its group.
+  const waitsOnYou = (project: ProjectRecord) => !project.archived && (project.threads?.waiting ?? 0) > 0
+  const yourProjects = pinned.filter(({ project }) => waitsOnYou(project))
+  const yourSessions = workspaces
+    .flatMap(path => {
+      const snippets = snippetsFor(path)
+      return listsFor(path).sessions
+        .filter(session => session.waiting && (matchesTitle(session, q) || Boolean(snippets?.has(session.id))))
+        .map(session => ({
+          path,
+          session,
+          snippet: q && !matchesTitle(session, q) ? snippets?.get(session.id) : undefined,
+        }))
+    })
+    .sort((a, b) => a.session.updatedAt - b.session.updatedAt)
+  const yourTurn = yourProjects.length + yourSessions.length
   const archived = pinned.filter(({ path, project }) => project.archived && !selectedPinned(path, project.id))
-  const current = pinned.filter(item => !archived.includes(item))
+  const current = pinned.filter(item => !archived.includes(item) && !yourProjects.includes(item))
   const shownPinned = showArchived || q ? [...current, ...archived] : current
   const pinnedOpen = !collapsed.has(PINNED_KEY) || Boolean(q)
   // A few projects, then "N more"; the open project and any that waits on you or failed stay in view.
@@ -365,7 +383,7 @@ export function Sidebar({
     .map(item => item.path)
 
   // Whether the search found anything at all, to say so when it didn't.
-  const anyMatch = shownPinned.length > 0 || workspaces.some(path => {
+  const anyMatch = shownPinned.length > 0 || yourTurn > 0 || workspaces.some(path => {
     const snippets = snippetsFor(path)
     return listsFor(path).sessions.some(session => matchesTitle(session, q) || Boolean(snippets?.has(session.id)))
   })
@@ -383,7 +401,7 @@ export function Sidebar({
     <aside className={`sidebar${open ? '' : ' is-closed'}`} aria-label="Workspaces" aria-hidden={!open || undefined} inert={!open}>
       <div className="sidebar-top">
         <div className="brand">
-          <span className="brand-mark" aria-hidden />
+          <span className="brand-mark disc" aria-hidden />
           <span className="brand-name">tnega</span>
         </div>
         <span className="sidebar-top-actions">
@@ -393,25 +411,27 @@ export function Sidebar({
         </span>
       </div>
 
-      <div className="sidebar-actions">
-        <button type="button" className="sidebar-action" onClick={() => { if (newTarget) onNewSession(newSessionTarget ?? newTarget) }} disabled={!newTarget} title="New session (Ctrl+Shift+O)">
-          <SquarePen size={14} aria-hidden />
+      <div className="sidebar-start">
+        <button type="button" className="sidebar-new" onClick={() => { if (newTarget) onNewSession(newSessionTarget ?? newTarget) }} disabled={!newTarget} title="New session (Ctrl+Shift+O)">
+          <SquarePen size={16} aria-hidden />
           <span>New session</span>
         </button>
-        <button type="button" className="sidebar-action" onClick={() => { if (newTarget) onNewProject(newTarget) }} disabled={!newTarget} title="New project: a coordinator splits one goal into parallel threads">
-          <FolderKanban size={14} aria-hidden />
-          <span>New project</span>
-        </button>
-        {onTemporaryChat && (
-          <button type="button" className="sidebar-action" onClick={onTemporaryChat} title="Temporary chat: quick questions on the side, not saved">
-            <MessageCircleDashed size={14} aria-hidden />
-            <span>Temporary chat</span>
-          </button>
-        )}
+        <Menu
+          label="More ways to start"
+          align="end"
+          className="sidebar-plus"
+          trigger={<Plus size={18} />}
+          items={[
+            { key: 'project', label: 'New project', icon: <FolderKanban size={14} />, disabled: !newTarget, onSelect: () => { if (newTarget) onNewProject(newTarget) } },
+            ...(onTemporaryChat ? [{ key: 'temporary', label: 'Temporary chat', icon: <MessageCircleDashed size={14} />, onSelect: onTemporaryChat }] : []),
+            'separator' as const,
+            { key: 'folder', label: 'Open a folder…', icon: <FolderPlus size={14} />, onSelect: onAddWorkspace },
+          ]}
+        />
       </div>
 
       <label className="sidebar-search">
-        <Search size={12} />
+        <Search size={16} aria-hidden />
         <input
           ref={searchBox}
           value={query}
@@ -419,14 +439,45 @@ export function Sidebar({
           onKeyDown={event => { if (event.key === 'Escape' && query) { event.preventDefault(); setQuery('') } }}
           placeholder="Search"
           aria-label="Search sessions and projects"
-          title="Search titles and messages (Ctrl+K)"
+          title="Search titles and messages"
         />
-        {query && (
-          <button type="button" className="icon-button tiny" aria-label="Clear search" onClick={() => setQuery('')}><X size={12} /></button>
-        )}
+        {query
+          ? <button type="button" className="icon-button tiny" aria-label="Clear search" onClick={() => setQuery('')}><X size={12} /></button>
+          : <kbd className="sidebar-search-key" aria-hidden>{MOD}K</kbd>}
       </label>
 
       <nav className="session-list workspace-tree scroll-fade" ref={sessionList}>
+        {yourTurn > 0 && (
+          <section className="sidebar-section your-turn" aria-label="Your turn">
+            <h2 className="sidebar-group-head">Your turn <span className="count">{yourTurn}</span></h2>
+            {yourProjects.map(({ path, project }) => (
+              <ProjectRow
+                key={`${path}\0${project.id}`}
+                project={project}
+                path={path}
+                active={selectedPinned(path, project.id)}
+                waited={waitedFor(project.updatedAt)}
+                onSelect={() => onSelectProject(path, project.id)}
+                onArchive={() => void onArchiveProject(path, project).then(changed => { if (changed) reload(path) })}
+                onDelete={() => void onDeleteProject(path, project).then(deleted => { if (deleted) reload(path) })}
+              />
+            ))}
+            {yourSessions.map(({ path, session, snippet }) => (
+              <SessionRow
+                key={`${path}\0${session.id}`}
+                session={session}
+                path={path}
+                active={path === workspace && mode === 'sessions' && session.id === selectedId}
+                query={q}
+                snippet={snippet}
+                waited={waitedFor(session.updatedAt)}
+                onClick={() => onSelectSession(path, session.id)}
+                onFork={() => onForkSession(path, session.id)}
+                onDelete={() => void onDeleteSession(path, session).then(deleted => { if (deleted && path !== workspace) load(path) })}
+              />
+            ))}
+          </section>
+        )}
         {shownPinned.length > 0 && (
           <section className={`sidebar-section${pinnedOpen ? ' open' : ''}`} aria-label="Pinned">
             <div className="workspace-head">
@@ -503,11 +554,8 @@ export function Sidebar({
       )}
 
       <div className="sidebar-footer">
-        <button type="button" className="sidebar-footer-button icon-only" onClick={onOpenSettings} aria-label="Settings" title="Settings">
-          <Settings size={14} />
-        </button>
-        <button type="button" className="sidebar-footer-button icon-only" onClick={onAddWorkspace} aria-label="Add workspace" title="Add workspace: open a folder">
-          <FolderPlus size={14} />
+        <button type="button" className="sidebar-round" onClick={onOpenSettings} aria-label="Settings" title="Settings">
+          <Settings size={16} />
         </button>
         <UpdateButton updates={updates} />
         <ThemeSwitch value={theme} onChange={onThemeChange} />
@@ -531,6 +579,84 @@ function highlight(text: string, query: string): ReactNode {
   parts.push(text.slice(from))
   return parts.map((part, index) => <Fragment key={index}>{part}</Fragment>)
 }
+
+/**
+ * A session row (umbrella/sidebar.md): 36 tall, the pen mark (16) and the title, nothing else; the
+ * menu appears on hover or focus. In the Your turn group it also says how long it has waited.
+ */
+function SessionRow({
+  session,
+  path,
+  active,
+  selecting = false,
+  picked = false,
+  query = '',
+  snippet,
+  waited,
+  onClick,
+  onFork,
+  onStartSelecting,
+  onDelete,
+}: {
+  session: SessionSummary
+  path: string
+  active: boolean
+  selecting?: boolean
+  picked?: boolean
+  query?: string
+  snippet?: string | undefined
+  /** How long it has waited on you, for the Your turn group. */
+  waited?: string | undefined
+  onClick: (event: MouseEvent) => void
+  onFork: () => void
+  onStartSelecting?: (() => void) | undefined
+  onDelete: () => void
+}) {
+  const title = session.title || 'Untitled session'
+  const open = active && !selecting
+  return (
+    <div className={`session-item${open ? ' active' : ''}${picked ? ' picked' : ''}${snippet ? ' has-snippet' : ''}${session.waiting ? ' yours' : ''}`}>
+      <button
+        type="button"
+        className="session-button"
+        onClick={onClick}
+        {...(selecting
+          ? { role: 'checkbox', 'aria-checked': picked }
+          : { 'aria-current': active ? 'page' as const : undefined })}
+        title={`${title}\n${session.parentSessionId ? 'Forked · ' : ''}${relativeTime(session.updatedAt)}`}
+      >
+        <span className="session-title">
+          <span className="session-mark">
+            {selecting
+              ? <span className={`session-check${picked ? ' on' : ''}`} aria-hidden>{picked && <Check size={10} strokeWidth={2.5} />}</span>
+              : <StatusLight {...sessionLight(session)} size={16} />}
+          </span>
+          <span>{highlight(title, query)}</span>
+        </span>
+        {waited && !snippet && <span className="session-waited">{waited}</span>}
+        {snippet && <span className="session-snippet">{highlight(snippet, query)}</span>}
+      </button>
+      {!selecting && (
+        <Menu
+          label="Session options"
+          align="end"
+          className="icon-button tiny session-more"
+          trigger={<MoreHorizontal size={12} />}
+          items={[
+            { key: 'fork', label: 'Fork', icon: <GitBranch size={14} />, onSelect: onFork },
+            { key: 'copy-link', label: 'Copy link', icon: <Link size={14} />, onSelect: () => copyToClipboard(sessionLink(path, session.id)) },
+            { key: 'copy-id', label: 'Copy ID', icon: <Copy size={14} />, onSelect: () => copyToClipboard(session.id) },
+            ...(onStartSelecting ? [{ key: 'select', label: 'Select', icon: <ListChecks size={14} />, onSelect: onStartSelecting }] : []),
+            { key: 'delete', label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: onDelete },
+          ]}
+        />
+      )}
+    </div>
+  )
+}
+
+/** "2h ago" → "2h": in the Your turn group the time is how long it has waited. */
+const waitedFor = (at: number) => relativeTime(at).replace(/ ago$/, '')
 
 function WorkspaceGroup({
   path,
@@ -583,6 +709,7 @@ function WorkspaceGroup({
   const [showAll, setShowAll] = useState(false)
   const name = label ?? folderName(path)
   const sessions = useMemo(() => lists.sessions
+    .filter(session => !session.waiting)
     .filter(session => matchesTitle(session, query) || Boolean(snippets?.has(session.id)))
     .sort((a, b) => b.updatedAt - a.updatedAt), [lists.sessions, query, snippets])
   // Keep the open session visible even when it is older than the first few.
@@ -643,51 +770,28 @@ function WorkspaceGroup({
           {lists.loading && sessions.length === 0 && (
             <div className="session-skeleton"><i /><i /></div>
           )}
-          {!lists.loading && !query && sessions.length === 0 && (
+          {!lists.loading && !query && lists.sessions.length === 0 && (
             <p className="sidebar-empty">No sessions yet.</p>
           )}
           {sessions.slice(0, limit).map(session => {
-            const title = session.title || 'Untitled session'
             const picked = selecting && isPicked(session.id)
             // A row found by what was said in it shows that line; a title match needs nothing more.
             const snippet = query && !matchesTitle(session, query) ? snippets?.get(session.id) : undefined
             return (
-              <div key={session.id} className={`session-item${session.id === selectedSession && !selecting ? ' active' : ''}${picked ? ' picked' : ''}${snippet ? ' has-snippet' : ''}`}>
-                <button
-                  type="button"
-                  className="session-button"
-                  onClick={event => clickRow(event, session)}
-                  {...(selecting
-                    ? { role: 'checkbox', 'aria-checked': picked }
-                    : { 'aria-current': session.id === selectedSession ? 'page' as const : undefined })}
-                  title={`${title}\n${session.parentSessionId ? 'Forked · ' : ''}${relativeTime(session.updatedAt)}`}
-                >
-                  <span className="session-title">
-                    <span className="session-mark">
-                      {selecting
-                        ? <span className={`session-check${picked ? ' on' : ''}`} aria-hidden>{picked && <Check size={10} strokeWidth={2.5} />}</span>
-                        : <StatusLight {...sessionLight(session)} />}
-                    </span>
-                    <span>{highlight(title, query)}</span>
-                  </span>
-                  {snippet && <span className="session-snippet">{highlight(snippet, query)}</span>}
-                </button>
-                {!selecting && (
-                  <Menu
-                    label="Session options"
-                    align="end"
-                    className="icon-button tiny session-more"
-                    trigger={<MoreHorizontal size={12} />}
-                    items={[
-                      { key: 'fork', label: 'Fork', icon: <GitBranch size={14} />, onSelect: () => onFork(session.id) },
-                      { key: 'copy-link', label: 'Copy link', icon: <Link size={14} />, onSelect: () => copyToClipboard(sessionLink(path, session.id)) },
-                      { key: 'copy-id', label: 'Copy ID', icon: <Copy size={14} />, onSelect: () => copyToClipboard(session.id) },
-                      ...(onStartSelecting ? [{ key: 'select', label: 'Select', icon: <ListChecks size={14} />, onSelect: () => onStartSelecting(session) }] : []),
-                      { key: 'delete', label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => onDelete(session) },
-                    ]}
-                  />
-                )}
-              </div>
+              <SessionRow
+                key={session.id}
+                session={session}
+                path={path}
+                active={session.id === selectedSession}
+                selecting={selecting}
+                picked={picked}
+                query={query}
+                snippet={snippet}
+                onClick={event => clickRow(event, session)}
+                onFork={() => onFork(session.id)}
+                onStartSelecting={onStartSelecting ? () => onStartSelecting(session) : undefined}
+                onDelete={() => onDelete(session)}
+              />
             )
           })}
           {hidden > 0 && (
@@ -710,6 +814,7 @@ function ProjectRow({
   project,
   path,
   active,
+  waited,
   onSelect,
   onArchive,
   onDelete,
@@ -717,13 +822,15 @@ function ProjectRow({
   project: ProjectRecord
   path: string
   active: boolean
+  /** How long it has waited on you, for the Your turn group. */
+  waited?: string | undefined
   onSelect: () => void
   onArchive: () => void
   onDelete: () => void
 }) {
   const light = projectLight(project.threads)
   return (
-    <div className={`session-item project-item${active ? ' active' : ''}${project.archived ? ' archived' : ''}`}>
+    <div className={`session-item project-item${active ? ' active' : ''}${project.archived ? ' archived' : ''}${waited ? ' yours' : ''}`}>
       <button
         type="button"
         className="session-button"
@@ -732,12 +839,16 @@ function ProjectRow({
         title={[project.name, project.goal, `${folderName(path)} · ${relativeTime(project.updatedAt)}`].filter(Boolean).join('\n')}
       >
         <span className="session-title">
-          <span className="session-mark"><FolderKanban size={14} className="project-icon" aria-hidden /></span>
+          <span className="session-mark">
+            {light
+              ? <StatusLight tone={light.tone} label={light.label} size={16} />
+              : <FolderKanban size={14} className="project-icon" aria-hidden />}
+          </span>
           <span>{project.name}</span>
         </span>
-        {(light || Boolean(project.pullRequests?.length)) && (
+        {waited && <span className="session-waited">{waited}</span>}
+        {Boolean(project.pullRequests?.length) && (
           <span className="project-marks">
-            {light && <StatusLight tone={light.tone} label={light.label} />}
             <PullRequestMark pullRequests={project.pullRequests} />
           </span>
         )}
@@ -769,28 +880,40 @@ function sessionLight(session: SessionSummary): { tone: LightTone; label: string
   return { tone: 'idle', label: 'Idle' }
 }
 
+/**
+ * Light or dark, as a two-way pill (umbrella/sidebar.md). "System" lives in Settings › Appearance;
+ * while it is chosen, the segment for the look the system gives is the one marked.
+ */
 function ThemeSwitch({ value, onChange }: { value: ThemePreference; onChange: (value: ThemePreference) => void }) {
-  const options: Array<{ value: ThemePreference; icon: typeof Sun; label: string }> = [
+  const effective = value === 'system' ? systemTheme() : value
+  const options: Array<{ value: 'light' | 'dark'; icon: typeof Sun; label: string }> = [
     { value: 'light', icon: Sun, label: 'Light' },
     { value: 'dark', icon: Moon, label: 'Dark' },
-    { value: 'system', icon: Monitor, label: 'System' },
   ]
   return (
-    <div className="segmented" role="radiogroup" aria-label="Theme">
+    <div className="segmented sidebar-theme" role="radiogroup" aria-label="Theme">
       {options.map(option => (
         <button
           key={option.value}
           type="button"
           role="radio"
-          aria-checked={value === option.value}
+          aria-checked={effective === option.value}
           aria-label={option.label}
-          title={option.label}
-          className={value === option.value ? 'active' : undefined}
+          title={value === 'system' && effective === option.value ? `${option.label} (following the system)` : option.label}
+          className={effective === option.value ? 'active' : undefined}
           onClick={() => onChange(option.value)}
         >
-          <option.icon size={12} />
+          <option.icon size={14} />
         </button>
       ))}
     </div>
   )
+}
+
+function systemTheme(): 'light' | 'dark' {
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
 }

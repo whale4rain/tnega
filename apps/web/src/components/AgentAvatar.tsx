@@ -1,5 +1,5 @@
-import { createContext, memo, useContext, useMemo, useSyncExternalStore } from 'react'
-import { ACCENT, avatarSalt, avatarSpec, effectiveSeed, rerollAvatar, subscribeAvatars, type AvatarSpec, type Shape } from '../lib/avatar'
+import { createContext, memo, useContext, useId, useMemo, useSyncExternalStore } from 'react'
+import { ACCENT, BRAND_CLOUD, BRAND_CLOUD_CUTS_LARGE, BRAND_CLOUD_CUTS_SMALL, avatarSalt, avatarSpec, effectiveSeed, rerollAvatar, subscribeAvatars, type AvatarSpec, type Shape } from '../lib/avatar'
 import { WEATHER_LABEL, type Weather } from '../lib/weather'
 import { WeatherBack, WeatherFront } from './WeatherLayer'
 
@@ -7,10 +7,11 @@ import { WeatherBack, WeatherFront } from './WeatherLayer'
 export const AvatarSeeds = createContext<Record<string, string>>({})
 
 /**
- * A cute abstract avatar: a soft shape with two white eyes. `id` is the stable
- * agent id; the same id always draws the same avatar until rerolled. `weather`
- * draws the agent's state around it (see lib/weather.ts); a live avatar
- * without one is `cloudy`, i.e. thinking.
+ * A cute abstract avatar: a soft shape with two white eyes, or, for the main
+ * agent (`role="coordinator"`), the Swiss sliced brand cloud in ink. `id` is
+ * the stable agent id; the same id always draws the same avatar until rerolled.
+ * `weather` draws the agent's state around it (see lib/weather.ts); a live
+ * avatar without one is `cloudy`, i.e. thinking.
  */
 export const AgentAvatar = memo(function AgentAvatar({
   id,
@@ -52,6 +53,7 @@ const EYE_Y: Record<Shape, number> = {
   gumdrop: 38,
   cloud: 32,
   drop: 40,
+  brand: 32,
 }
 
 /** Small shifts of expression that go with the weather. */
@@ -62,34 +64,9 @@ function expression(weather: Weather | undefined): { lookUp: boolean; squint: bo
 function AvatarSvg({ spec, size, live, title, weather }: { spec: AvatarSpec; size: number; live: boolean; title?: string | undefined; weather?: Weather | undefined }) {
   const fill = spec.color === ACCENT ? 'var(--accent)' : spec.color === 'ink' ? 'var(--avatar-ink)' : spec.color
   const mood = expression(weather)
-  const cx = 32 + spec.gazeX
-  const cy = EYE_Y[spec.shape] + (mood.lookUp ? -4 : spec.gazeY)
-  const gap = spec.eyes === 'pill' ? 7 : 7.5
-  const pill = mood.squint ? { h: 8, r: 3.6 } : { h: 17, r: 4.2 }
-  const character = (
-    <>
-      <g className="av-body" style={{ fill }}>
-        <Body shape={spec.shape} rotate={spec.rotate} />
-      </g>
-      {mood.happy
-        ? (
-          <g className="av-eyes av-eyes-happy" fill="none" stroke="#fff" strokeWidth="4.2" strokeLinecap="round">
-            {[-1, 1].map(side => <path key={side} d={`M${cx + side * gap - 4.5} ${cy + 2} q4.5 -6.5 9 0`} />)}
-          </g>
-        )
-        : (
-          <g className="av-eyes" fill="#fff">
-            {[-1, 1].map(side => (
-              <g key={side} className="av-eye">
-                {spec.eyes === 'pill'
-                  ? <rect x={cx + side * gap - 4.2} y={cy - pill.h / 2} width="8.4" height={pill.h} rx={pill.r} transform={`rotate(${spec.eyeTilt} ${cx + side * gap} ${cy})`} />
-                  : <circle cx={cx + side * gap} cy={cy} r={mood.squint ? 4.2 : 6} />}
-              </g>
-            ))}
-          </g>
-        )}
-    </>
-  )
+  const character = spec.shape === 'brand'
+    ? <BrandCloudCharacter fill={fill} size={size} />
+    : <ShapeCharacter spec={spec} fill={fill} mood={mood} />
   return (
     <svg
       className={`agent-avatar-svg${live ? ' is-live' : ''}${weather ? ` has-weather wx-is-${weather}` : ''}`}
@@ -137,5 +114,61 @@ function Body({ shape, rotate }: { shape: Shape; rotate: number }) {
       )
     case 'drop':
       return <path d="M32 5 C39 15 57 27 57 40 A25 25 0 0 1 7 40 C7 27 25 15 32 5 Z" />
+    case 'brand':
+      return <path d={BRAND_CLOUD} />
   }
+}
+
+type Mood = ReturnType<typeof expression>
+
+function ShapeCharacter({ spec, fill, mood }: { spec: AvatarSpec; fill: string; mood: Mood }) {
+  const cx = 32 + spec.gazeX
+  const cy = EYE_Y[spec.shape] + (mood.lookUp ? -4 : spec.gazeY)
+  const gap = spec.eyes === 'pill' ? 7 : 7.5
+  const pill = mood.squint ? { h: 8, r: 3.6 } : { h: 17, r: 4.2 }
+  return (
+    <>
+      <g className="av-body" style={{ fill }}>
+        <Body shape={spec.shape} rotate={spec.rotate} />
+      </g>
+      {mood.happy
+        ? (
+          <g className="av-eyes av-eyes-happy" fill="none" stroke="#fff" strokeWidth="4.2" strokeLinecap="round">
+            {[-1, 1].map(side => <path key={side} d={`M${cx + side * gap - 4.5} ${cy + 2} q4.5 -6.5 9 0`} />)}
+          </g>
+        )
+        : (
+          <g className="av-eyes" fill="#fff">
+            {[-1, 1].map(side => (
+              <g key={side} className="av-eye">
+                {spec.eyes === 'pill'
+                  ? <rect x={cx + side * gap - 4.2} y={cy - pill.h / 2} width="8.4" height={pill.h} rx={pill.r} transform={`rotate(${spec.eyeTilt} ${cx + side * gap} ${cy})`} />
+                  : <circle cx={cx + side * gap} cy={cy} r={mood.squint ? 4.2 : 6} />}
+              </g>
+            ))}
+          </g>
+        )}
+    </>
+  )
+}
+
+/**
+ * The main agent: the Swiss geometric sliced brand cloud in ink, without a disc
+ * or cartoon eyes. Below 32px it uses 5 bolder bars so the horizontal slices
+ * stay crisp at avatar sizes.
+ */
+function BrandCloudCharacter({ fill, size }: { fill: string; size: number }) {
+  const mask = `av-brand-${useId().replace(/:/g, '')}`
+  const cuts = size < 32 ? BRAND_CLOUD_CUTS_SMALL : BRAND_CLOUD_CUTS_LARGE
+  return (
+    <g className="av-body" style={{ fill }}>
+      <defs>
+        <mask id={mask}>
+          <path d={BRAND_CLOUD} fill="white" />
+          {cuts.ys.map(y => <rect key={y} x="0" y={y} width="64" height={cuts.height} fill="black" />)}
+        </mask>
+      </defs>
+      <rect width="64" height="64" fill={fill} mask={`url(#${mask})`} />
+    </g>
+  )
 }

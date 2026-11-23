@@ -1,5 +1,5 @@
 import { ChartColumn, Cpu, Eye, EyeOff, Info, KeyRound, Monitor, Moon, Palette, Server, ShieldCheck, SquareTerminal, Sun, UserRound } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api, type ConfigPatch } from '../lib/api'
 import { errorText, useStoredState, type ThemePreference } from '../lib/hooks'
 import { DISPLAY_DEFAULTS, PALETTES, type DisplayChange, type DisplayPreferences } from '../lib/display'
@@ -12,6 +12,8 @@ import { SecretsSettings } from './SecretsSettings'
 import { AccountSettings } from './AccountSettings'
 import { ServerAdmin } from './ServerAdmin'
 import { ChoiceField } from './ChoiceField'
+import { SettingsCard, Switch } from './SettingsCard'
+import { confirmDialog } from '../lib/dialogs'
 import { runsServer, useAccount } from '../lib/account'
 import type { AuthSession } from '../lib/types'
 import { UpdateSettings } from './UpdateButton'
@@ -132,6 +134,7 @@ export function SettingsDialog({
   const [commandDenied, setCommandDeniedState] = useState((config?.sandbox?.network.deniedDomains ?? []).join('\n'))
   const touch = <T,>(field: 'mode' | 'allowed' | 'denied', set: (value: T) => void) => (value: T) => {
     setNetworkTouched(touched => touched.has(field) ? touched : new Set([...touched, field]))
+    setDirty(true)
     set(value)
   }
   const setCommandNetwork = touch('mode', setCommandNetworkState)
@@ -148,6 +151,14 @@ export function SettingsDialog({
   const networkSupport = useNetworkSupport(section === 'tools' && commandNetwork !== 'open')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>()
+  // Something in Models, Approvals or Tools was edited and is not saved yet. Appearance and
+  // the parts that save on their own (model routes, secrets, account) are not counted.
+  const [dirty, setDirty] = useState(false)
+  const markHostChange = (event: FormEvent<HTMLDivElement>) => {
+    if (section !== 'model' && section !== 'approvals' && section !== 'tools') return
+    if (event.target instanceof Element && event.target.closest('.model-route-form, .model-browser, .chatgpt-sign-in')) return
+    setDirty(true)
+  }
 
   const fail = (message: string, where: SectionId) => {
     setError(message)
@@ -197,6 +208,7 @@ export function SettingsDialog({
     }
     try {
       onSaved(await api.saveConfig(patch))
+      setDirty(false)
       onClose()
     } catch (reason) {
       setError(errorText(reason))
@@ -219,372 +231,381 @@ export function SettingsDialog({
       {children}
     </section>
   )
+  const routeOptions = stored?.models?.map(route => <option key={route.id} value={route.id}>{route.name || route.id}</option>)
+
+  // Leaving with unsaved changes asks once; a second Escape while it asks does nothing.
+  const asking = useRef(false)
+  const close = async () => {
+    if (!dirty || !hostSettings) return onClose()
+    if (asking.current) return
+    asking.current = true
+    const discard = await confirmDialog({ title: 'Discard your changes?', message: 'The settings you changed here are not saved yet.', confirmLabel: 'Discard', danger: true })
+    asking.current = false
+    if (discard) onClose()
+  }
 
   return (
-    <Dialog
-      title="Settings"
-      width={920}
-      onClose={onClose}
-      footer={
-        <>
-          {error && <span className="form-error" role="alert">{error}</span>}
-          <button type="button" className="button ghost" onClick={onClose}>Cancel</button>
-          {hostSettings && <button type="button" className="button primary" onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>}
-        </>
-      }
-    >
-      {config?.problem && (
-        <div className="notice notice-error" role="alert">
-          The config file could not be read, so nothing will be saved over it: {config.problem}
-        </div>
-      )}
+    <Dialog title="Settings" width={880} header={false} className="settings-dialog" onClose={() => void close()}>
       <div className="settings-layout">
-        <nav className="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
-          {sections.map(entry => {
-            const Icon = entry.icon
-            return (
-              <button
-                key={entry.id}
-                id={`settings-tab-${entry.id}`}
-                type="button"
-                role="tab"
-                aria-selected={section === entry.id}
-                aria-controls={`settings-panel-${entry.id}`}
-                className={`settings-nav-item${section === entry.id ? ' active' : ''}`}
-                onClick={() => setSection(entry.id)}
-              >
-                <Icon size={14} aria-hidden />{entry.label}
-              </button>
-            )
-          })}
+        <nav className="settings-nav" aria-label="Settings">
+          <h2 className="settings-nav-title">Settings</h2>
+          <div className="settings-nav-list" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
+            {sections.map(entry => {
+              const Icon = entry.icon
+              return (
+                <button
+                  key={entry.id}
+                  id={`settings-tab-${entry.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={section === entry.id}
+                  aria-controls={`settings-panel-${entry.id}`}
+                  className={`settings-nav-item${section === entry.id ? ' active' : ''}`}
+                  onClick={() => setSection(entry.id)}
+                >
+                  <Icon size={15} aria-hidden />{entry.label}
+                </button>
+              )
+            })}
+          </div>
         </nav>
-        <div className="settings-content">
+        <div className="settings-side">
           <header className="settings-content-header">
             <h3>{current.label}</h3>
-            <p className="muted small">{current.description}</p>
+            <p>{current.description}</p>
           </header>
-
-          {hostSettings && panel('model', <>
-            <h4>Project memory</h4>
-            <div className="form-grid">
-              <label className="field-check span-2"><input type="checkbox" checked={memoryEnabled} onChange={event => setMemoryEnabled(event.target.checked)} />Automatic project memory</label>
-              <label className="field span-2"><span className="field-label">Delayed memory model</span>
-                <select value={memoryModel} onChange={event => setMemoryModel(event.target.value)}>
-                  <option value="">Skip delayed extraction</option>
-                  {stored?.models?.map(route => <option key={route.id} value={route.id}>{route.name || route.id}</option>)}
-                </select>
-              </label>
-              <label className="field"><span className="field-label">Memory calls per day</span><input type="number" min={0} max={100} value={memoryCalls} onChange={event => setMemoryCalls(Number(event.target.value))} /></label>
-              <label className="field"><span className="field-label">Memory tokens per day</span><input type="number" min={0} max={1000000} value={memoryDaily} onChange={event => setMemoryDaily(Number(event.target.value))} /></label>
-              <label className="field"><span className="field-label">Memory input reservation per call</span><input type="number" min={1024} max={131072} value={memoryInput} onChange={event => setMemoryInput(Number(event.target.value))} /></label>
-              <label className="field"><span className="field-label">Memory output tokens per call</span><input type="number" min={128} max={4096} value={memoryOutput} onChange={event => setMemoryOutput(Number(event.target.value))} /></label>
-              <label className="field"><span className="field-label">Memory interval in seconds</span><input type="number" min={0} max={86400} value={memoryInterval} onChange={event => setMemoryInterval(Number(event.target.value))} /></label>
-            </div>
-            <p className="muted small">After completed work, memory uses a separate request with the original context. Cache reuse is possible, never guaranteed. Delayed extraction uses only the selected route; choose an economical model. All projects share the daily limits and run one memory request at a time. Uncached input and maximum output are reserved even for failures. These token reservations are not a currency budget.</p>
-            <h4>Dreaming</h4>
-            <div className="form-grid">
-              <label className="field-check span-2"><input type="checkbox" checked={dreamEnabled} onChange={event => setDreamEnabled(event.target.checked)} />Dream from recent sessions</label>
-              <label className="field"><span className="field-label">Dreaming model</span>
-                <select value={dreamModel} onChange={event => setDreamModel(event.target.value)}>
-                  <option value="">Default model</option>
-                  {stored?.models?.map(route => <option key={route.id} value={route.id}>{route.name || route.id}</option>)}
-                </select>
-              </label>
-              <label className="field"><span className="field-label">Quiet minutes before dreaming</span><input type="number" min={1} max={1440} value={dreamIdle} onChange={event => setDreamIdle(Number(event.target.value))} /></label>
-            </div>
-            <p className="muted small">When a session has been quiet for a while, tnega reads what was said since its last dream and updates the workspace's project memory in the background, one request at a time. Tool output is not read, and global memory is never changed this way.</p>
-            {config && (
-              <ModelRoutes
-                config={config}
-                defaultId={model.trim() || effective?.modelId || ''}
-                onDefault={setModel}
-                onChanged={onSaved}
-              />
-            )}
-            {!stored?.models?.length && effective && (
-              <div className="effective-card">
-                <div className="effective-row"><span>Active model</span><strong>{effective.modelId || effective.model || '—'}</strong></div>
-                <div className="effective-row"><span>Endpoint</span><strong className="mono">{effective.baseUrl || 'provider default'}</strong></div>
-                <div className="effective-row">
-                  <span>API key</span>
-                  <strong className={config.apiKeySet ? 'ok' : 'danger'}>{config.apiKeySet ? (config.env.apiKeySet && !config.config.apiKeySet ? 'From environment' : 'Configured') : 'Missing'}</strong>
-                </div>
+          <div className="settings-content" onChangeCapture={markHostChange}>
+            {config?.problem && (
+              <div className="notice notice-error" role="alert">
+                The config file could not be read, so nothing will be saved over it: {config.problem}
               </div>
             )}
-            <div className="form-grid">
-              {!stored?.models?.length && <>
-              <label className="field">
-                <span className="field-label">Protocol</span>
-                <select value={protocol} onChange={event => setProtocol(event.target.value as '' | Protocol)}>
-                  <option value="">Detect automatically</option>
-                  <option value="anthropic">Anthropic Messages</option>
-                  <option value="openai">OpenAI compatible</option>
-                </select>
-              </label>
-              <label className="field">
-                <span className="field-label">Model</span>
-                <input value={model} onChange={event => setModel(event.target.value)} placeholder={effective?.model || 'e.g. claude-sonnet-5-5'} spellCheck={false} />
-              </label>
-              <label className="field span-2">
-                <span className="field-label">Base URL</span>
-                <input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={effective?.baseUrl || 'https://api.anthropic.com'} spellCheck={false} />
-              </label>
-              <label className="field span-2">
-                <span className="field-label">API key</span>
-                <span className="input-with-icon">
-                  <KeyRound size={14} />
-                  <input
-                    type={showKey ? 'text' : 'password'}
-                    value={apiKey}
-                    onChange={event => setApiKey(event.target.value)}
-                    placeholder={stored?.apiKeySet ? 'Saved — leave empty to keep it' : 'Paste your key'}
-                    autoComplete="off"
-                    spellCheck={false}
+
+            {hostSettings && panel('model', <>
+              <SettingsCard title="Chat models" description="The model sessions start with is marked Default; switch per session from the composer.">
+                {config && (
+                  <ModelRoutes
+                    config={config}
+                    defaultId={model.trim() || effective?.modelId || ''}
+                    onDefault={setModel}
+                    onChanged={onSaved}
                   />
-                  <button type="button" className="icon-button tiny" onClick={() => setShowKey(v => !v)} aria-label={showKey ? 'Hide key' : 'Show key'}>
-                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </span>
-              </label>
-              </>}
-              <label className="field">
-                <span className="field-label">Reasoning effort (all models)</span>
-                <select value={effort} onChange={event => setEffort(event.target.value as '' | Effort)}>
-                  <option value="">Model default</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
+                )}
+                {!stored?.models?.length && effective && (
+                  <div className="effective-card">
+                    <div className="effective-row"><span>Active model</span><strong>{effective.modelId || effective.model || '—'}</strong></div>
+                    <div className="effective-row"><span>Endpoint</span><strong className="mono">{effective.baseUrl || 'provider default'}</strong></div>
+                    <div className="effective-row">
+                      <span>API key</span>
+                      <strong className={config.apiKeySet ? undefined : 'danger'}>{config.apiKeySet ? (config.env.apiKeySet && !config.config.apiKeySet ? 'From environment' : 'Configured') : 'Missing'}</strong>
+                    </div>
+                  </div>
+                )}
+              </SettingsCard>
+              {!stored?.models?.length && (
+                <SettingsCard title="Connection" description="Without registered models, sessions use this one endpoint.">
+                  <div className="form-grid">
+                    <label className="field">
+                      <span className="field-label">Protocol</span>
+                      <select value={protocol} onChange={event => setProtocol(event.target.value as '' | Protocol)}>
+                        <option value="">Detect automatically</option>
+                        <option value="anthropic">Anthropic Messages</option>
+                        <option value="openai">OpenAI compatible</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span className="field-label">Model</span>
+                      <input value={model} onChange={event => setModel(event.target.value)} placeholder={effective?.model || 'e.g. claude-sonnet-5-5'} spellCheck={false} />
+                    </label>
+                    <label className="field span-2">
+                      <span className="field-label">Base URL</span>
+                      <input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={effective?.baseUrl || 'https://api.anthropic.com'} spellCheck={false} />
+                    </label>
+                    <label className="field span-2">
+                      <span className="field-label">API key</span>
+                      <span className="input-with-icon">
+                        <KeyRound size={14} />
+                        <input
+                          type={showKey ? 'text' : 'password'}
+                          value={apiKey}
+                          onChange={event => setApiKey(event.target.value)}
+                          placeholder={stored?.apiKeySet ? 'Saved — leave empty to keep it' : 'Paste your key'}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                        <button type="button" className="icon-button tiny" onClick={() => setShowKey(v => !v)} aria-label={showKey ? 'Hide key' : 'Show key'}>
+                          {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </span>
+                    </label>
+                  </div>
+                </SettingsCard>
+              )}
+              <SettingsCard title="Reasoning and temperature" description="Applies to every model unless a session picks its own effort.">
+                <div className="form-grid">
+                  <label className="field">
+                    <span className="field-label">Reasoning effort (all models)</span>
+                    <select value={effort} onChange={event => setEffort(event.target.value as '' | Effort)}>
+                      <option value="">Model default</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Temperature (all models)</span>
+                    <input value={temperature} onChange={event => setTemperature(event.target.value)} placeholder="Model default" inputMode="decimal" />
+                  </label>
+                </div>
+              </SettingsCard>
+              <SettingsCard
+                title="Project memory"
+                description="After completed work, a separate request with the original context updates the project's memory."
+                control={<Switch label="Automatic project memory" checked={memoryEnabled} onChange={setMemoryEnabled} />}
+              >
+                <div className="form-grid">
+                  <label className="field span-2"><span className="field-label">Delayed memory model</span>
+                    <select value={memoryModel} onChange={event => setMemoryModel(event.target.value)}>
+                      <option value="">Skip delayed extraction</option>
+                      {routeOptions}
+                    </select>
+                  </label>
+                  <label className="field"><span className="field-label">Memory calls per day</span><input type="number" min={0} max={100} value={memoryCalls} onChange={event => setMemoryCalls(Number(event.target.value))} /></label>
+                  <label className="field"><span className="field-label">Memory tokens per day</span><input type="number" min={0} max={1000000} value={memoryDaily} onChange={event => setMemoryDaily(Number(event.target.value))} /></label>
+                  <label className="field"><span className="field-label">Memory input reservation per call</span><input type="number" min={1024} max={131072} value={memoryInput} onChange={event => setMemoryInput(Number(event.target.value))} /></label>
+                  <label className="field"><span className="field-label">Memory output tokens per call</span><input type="number" min={128} max={4096} value={memoryOutput} onChange={event => setMemoryOutput(Number(event.target.value))} /></label>
+                  <label className="field"><span className="field-label">Memory interval in seconds</span><input type="number" min={0} max={86400} value={memoryInterval} onChange={event => setMemoryInterval(Number(event.target.value))} /></label>
+                </div>
+                <p className="field-help">Cache reuse is possible, never guaranteed. Delayed extraction uses only the selected route; choose an economical model. All projects share the daily limits and run one memory request at a time. Uncached input and maximum output are reserved even for failures. These token reservations are not a currency budget.</p>
+              </SettingsCard>
+              <SettingsCard
+                title="Dreaming"
+                description="When a session has been quiet for a while, tnega reads what was said since its last dream and updates the workspace's project memory."
+                control={<Switch label="Dream from recent sessions" checked={dreamEnabled} onChange={setDreamEnabled} />}
+              >
+                <div className="form-grid">
+                  <label className="field"><span className="field-label">Dreaming model</span>
+                    <select value={dreamModel} onChange={event => setDreamModel(event.target.value)}>
+                      <option value="">Default model</option>
+                      {routeOptions}
+                    </select>
+                  </label>
+                  <label className="field"><span className="field-label">Quiet minutes before dreaming</span><input type="number" min={1} max={1440} value={dreamIdle} onChange={event => setDreamIdle(Number(event.target.value))} /></label>
+                </div>
+                <p className="field-help">One request at a time, in the background. Tool output is not read, and global memory is never changed this way.</p>
+              </SettingsCard>
+            </>)}
+
+            {panel('usage', section === 'usage' ? <ContextInsights workspace={workspace} onOpenSession={onOpenSession} /> : null)}
+            {panel('instructions', section === 'instructions' ? <SettingsCard title="Workspace instructions" description="Every session in the open workspace reads these first."><WorkspacePrompt key={workspace} workspace={workspace} /></SettingsCard> : null)}
+            {panel('secrets', section === 'secrets' ? <SecretsSettings workspace={workspace} sessionId={sessionId} /> : null)}
+            {session && panel('account', section === 'account' ? <AccountSettings session={session} onSignedOut={() => location.assign('/')} /> : null)}
+            {session && runsServer(session) && panel('server', section === 'server' ? <ServerAdmin me={session.account} /> : null)}
+
+            {hostSettings && panel('approvals', <>
+              <SettingsCard title="Approval reviewer" labelFor="settings-review-provider" description="Who looks at an action that needs permission before it runs.">
+                <select id="settings-review-provider" value={reviewProvider} onChange={event => {
+                  const value = event.target.value
+                  if (value === 'conversation' || value === 'model' || value === 'jev' || value === 'openai') {
+                    setReviewProvider(value)
+                    setReviewModel('')
+                    setReviewBaseUrl('')
+                    setReviewKey('')
+                    setReviewKeyEnv('')
+                  }
+                }}>
+                  <option value="conversation">Conversation model</option>
+                  <option value="model">Configured model route</option>
+                  <option value="jev">TypeSafe Jev</option>
+                  <option value="openai">OpenAI Responses</option>
                 </select>
-              </label>
-              <label className="field">
-                <span className="field-label">Temperature (all models)</span>
-                <input value={temperature} onChange={event => setTemperature(event.target.value)} placeholder="Model default" inputMode="decimal" />
-              </label>
-            </div>
-          </>)}
-
-          {panel('usage', section === 'usage' ? <ContextInsights workspace={workspace} onOpenSession={onOpenSession} /> : null)}
-          {panel('instructions', section === 'instructions' ? <WorkspacePrompt key={workspace} workspace={workspace} /> : null)}
-          {panel('secrets', section === 'secrets' ? <SecretsSettings workspace={workspace} sessionId={sessionId} /> : null)}
-          {session && panel('account', section === 'account' ? <AccountSettings session={session} onSignedOut={() => location.assign('/')} /> : null)}
-          {session && runsServer(session) && panel('server', section === 'server' ? <ServerAdmin me={session.account} /> : null)}
-          {hostSettings && panel('approvals', <div className="form-grid">
-            <label className="field">
-              <span className="field-label">Approval reviewer</span>
-              <select value={reviewProvider} onChange={event => {
-                const value = event.target.value
-                if (value === 'conversation' || value === 'model' || value === 'jev' || value === 'openai') {
-                  setReviewProvider(value)
-                  setReviewModel('')
-                  setReviewBaseUrl('')
-                  setReviewKey('')
-                  setReviewKeyEnv('')
-                }
-              }}>
-                <option value="conversation">Conversation model</option>
-                <option value="model">Configured model route</option>
-                <option value="jev">TypeSafe Jev</option>
-                <option value="openai">OpenAI Responses</option>
-              </select>
-            </label>
-            <label className="field">
-              <span className="field-label">Default approvals</span>
-              <select value={reviewDefault} onChange={event => { if (event.target.value === 'manual' || event.target.value === 'auto') setReviewDefault(event.target.value) }}>
-                <option value="manual">Ask me</option>
-                <option value="auto">Auto review</option>
-              </select>
-            </label>
-            {reviewProvider === 'model' && <label className="field span-2">
-              <span className="field-label">Reviewer model route</span>
-              <select value={reviewModelId} onChange={event => setReviewModelId(event.target.value)}>
-                <option value="">Choose a route</option>
-                {config?.models.map(route => <option key={route.id} value={route.id}>{route.name}</option>)}
-              </select>
-            </label>}
-            {(reviewProvider === 'jev' || reviewProvider === 'openai') && <>
-              <label className="field"><span className="field-label">Reviewer model</span><input value={reviewModel} onChange={event => setReviewModel(event.target.value)} placeholder={reviewProvider === 'jev' ? 'jev-latest' : 'gpt-6.1-sol'} spellCheck={false} /></label>
-              <label className="field"><span className="field-label">API key environment variable</span><input value={reviewKeyEnv} onChange={event => setReviewKeyEnv(event.target.value)} placeholder={reviewProvider === 'jev' ? 'TYPESAFE_API_KEY' : 'OPENAI_API_KEY'} spellCheck={false} /></label>
-              <label className="field span-2"><span className="field-label">Reviewer endpoint</span><input value={reviewBaseUrl} onChange={event => setReviewBaseUrl(event.target.value)} placeholder={reviewProvider === 'jev' ? 'https://api.typesafe.ai/v1' : 'https://api.openai.com/v1'} spellCheck={false} /></label>
-              <label className="field span-2"><span className="field-label">Reviewer API key</span><input type="password" value={reviewKey} onChange={event => setReviewKey(event.target.value)} placeholder={stored?.approvalReview?.apiKeySet ? 'Saved — leave empty to keep it' : 'Separate credential or environment variable'} autoComplete="off" /></label>
-            </>}
-            <p className="muted small span-2">Auto review keeps your selected permissions. Uncertain or unavailable reviews return to you. Applies to Project threads by default; sessions can choose their own approval mode.</p>
-          </div>)}
-
-          {hostSettings && panel('tools', <div className="form-grid">
-            <label className="field span-2">
-              <span className="field-label">Shell</span>
-              <select aria-label="Shell" value={shell} onChange={event => setShell(event.target.value)}>
-                <option value="">Automatic{config?.shell?.active && !stored?.shell ? ` · ${config.shell.active}` : ''}</option>
-                {config?.shell?.available.map(option => <option key={option.path} value={option.path}>{option.label} · {option.path}</option>)}
-                {shell && !config?.shell?.available.some(option => option.path === shell) && <option value={shell}>{shell}</option>}
-              </select>
-              <span className="muted small">Used by the shell and background-process tools. The agent is told which syntax to write. Git Bash cannot run inside the Windows sandbox; choose it only with full access.</span>
-            </label>
-            <label className="field span-2">
-              <span className="field-label">CodeMode</span>
-              <select aria-label="CodeMode" value={codeMode ? 'enabled' : 'disabled'} onChange={event => setCodeMode(event.target.value === 'enabled')}>
-                <option value="disabled">关闭 · 原生工具</option>
-                <option value="enabled">开启 · 仅 run_code</option>
-              </select>
-              <span className="muted small">开启后模型只看到 run_code，通过代码调用原有工具。关闭后仅使用原生工具。保存后于下一次运行生效。</span>
-            </label>
-            <label className="field span-2">
-              <span className="field-label">Computer use · experimental</span>
-              <select aria-label="Computer use" value={computerUse ? 'enabled' : 'disabled'} onChange={event => setComputerUse(event.target.value === 'enabled')}>
-                <option value="disabled">Off</option>
-                <option value="enabled">On · the agent can see and use your apps</option>
-              </select>
-              <span className="muted small">Uses cua-driver, which must be installed. Screenshots of the windows it works in go to the model. Takes effect from the next run.</span>
-            </label>
-            {computerUse && <>
-              <label className="field span-2">
-                <span className="field-label">Computer use approvals</span>
-                <select aria-label="Computer use approvals" value={computerApproval} onChange={event => setComputerApproval(event.target.value === 'per-app' ? 'per-app' : 'auto')}>
-                  <option value="auto">Don't ask · only steps the agent flags as risky</option>
-                  <option value="per-app">Ask once per app in each session</option>
+                {reviewProvider === 'model' && <label className="field">
+                  <span className="field-label">Reviewer model route</span>
+                  <select value={reviewModelId} onChange={event => setReviewModelId(event.target.value)}>
+                    <option value="">Choose a route</option>
+                    {config?.models.map(route => <option key={route.id} value={route.id}>{route.name}</option>)}
+                  </select>
+                </label>}
+                {(reviewProvider === 'jev' || reviewProvider === 'openai') && <div className="form-grid">
+                  <label className="field"><span className="field-label">Reviewer model</span><input value={reviewModel} onChange={event => setReviewModel(event.target.value)} placeholder={reviewProvider === 'jev' ? 'jev-latest' : 'gpt-6.1-sol'} spellCheck={false} /></label>
+                  <label className="field"><span className="field-label">API key environment variable</span><input value={reviewKeyEnv} onChange={event => setReviewKeyEnv(event.target.value)} placeholder={reviewProvider === 'jev' ? 'TYPESAFE_API_KEY' : 'OPENAI_API_KEY'} spellCheck={false} /></label>
+                  <label className="field span-2"><span className="field-label">Reviewer endpoint</span><input value={reviewBaseUrl} onChange={event => setReviewBaseUrl(event.target.value)} placeholder={reviewProvider === 'jev' ? 'https://api.typesafe.ai/v1' : 'https://api.openai.com/v1'} spellCheck={false} /></label>
+                  <label className="field span-2"><span className="field-label">Reviewer API key</span><input type="password" value={reviewKey} onChange={event => setReviewKey(event.target.value)} placeholder={stored?.approvalReview?.apiKeySet ? 'Saved — leave empty to keep it' : 'Separate credential or environment variable'} autoComplete="off" /></label>
+                </div>}
+              </SettingsCard>
+              <SettingsCard title="Default approvals" labelFor="settings-review-default" description="Auto review keeps your selected permissions; uncertain or unavailable reviews come back to you.">
+                <select id="settings-review-default" value={reviewDefault} onChange={event => { if (event.target.value === 'manual' || event.target.value === 'auto') setReviewDefault(event.target.value) }}>
+                  <option value="manual">Ask me</option>
+                  <option value="auto">Auto review</option>
                 </select>
-                <span className="muted small">Either way, the agent asks you first before a step it judges could do damage or touch your security, such as deleting, sending, paying or changing a password.</span>
-              </label>
-              <label className="field span-2">
-                <span className="field-label">App limits</span>
-                <textarea aria-label="App limits" rows={3} value={computerApps} onChange={event => setComputerApps(event.target.value)} spellCheck={false} placeholder="Notepad: look&#10;Chrome: click" />
-                <span className="muted small">One app per line. look: screenshots and reading only. click: click, scroll and menus, no typing. full: everything. Apps not listed are full.</span>
-              </label>
-            </>}
-            <label className="field span-2">
-              <span className="field-label">File write guard · 实验性</span>
-              <select aria-label="File write guard" value={fsGuard} onChange={event => { const next = event.target.value; if (isFsGuardMode(next)) setFsGuard(next) }}>
-                <option value="off">off · 不记录读取版本</option>
-                <option value="warn">warn · 覆盖被改过的文件时写入并提示</option>
-                <option value="enforce">enforce · 未读过或被改过则拒绝</option>
-              </select>
-              <span className="muted small">覆盖已有文件时，与本次会话读到的版本比对。warn 只提示，enforce 会拒绝并要求重读。新建文件不受影响；精确编辑（edit_file）的匹配校验始终生效。默认 warn，观察一段时间后再决定是否收紧。</span>
-            </label>
-            {config?.network && <>
-              <label className="field span-2">
-                <span className="field-label">Network proxy</span>
-                <input aria-label="Network proxy" value={proxy} onChange={event => setProxy(event.target.value)} spellCheck={false}
-                  placeholder={config.network.environmentProxy ? `From the environment · ${config.network.environmentProxy}` : 'None · direct, or the system proxy in the desktop app'} />
-                <span className="muted small">For the agent's web requests, skill installs and the commands Command network lets out, such as http://127.0.0.1:7890. Leave empty to use HTTPS_PROXY from the environment.</span>
-              </label>
-              <label className="field span-2">
-                <span className="field-label">Allowed hosts</span>
-                <textarea aria-label="Allowed hosts" rows={3} value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} spellCheck={false} placeholder="docs.example.com&#10;*.example.org" />
-                <span className="muted small">For the agent's own web tools. Their requests to private or reserved addresses are blocked. Hosts listed here are trusted whatever their DNS answers, which a proxy in fake-IP mode (198.18.x.x) needs. Trusted already: {config.network.defaultAllowedHosts.join(', ')}.</span>
-              </label>
-            </>}
-            {config?.sandbox && <>
-              <ChoiceField
-                id="command-network"
-                label="Command network"
-                value={commandNetwork}
-                onChange={setCommandNetwork}
-                options={[['open', 'Open'], ['allowlist', 'Listed domains only'], ['off', 'Off']]}
-                hint={COMMAND_NETWORK_HINTS[commandNetwork]}
-              />
-              {commandNetwork === 'allowlist' && <>
-                <label className="field">
-                  <span className="field-label">Allowed domains</span>
-                  <textarea aria-label="Allowed domains for commands" rows={4} value={commandAllowed} onChange={event => setCommandAllowed(event.target.value)} spellCheck={false} placeholder="github.com&#10;*.github.com&#10;registry.npmjs.org:443" />
-                </label>
-                <label className="field">
-                  <span className="field-label">Blocked domains</span>
-                  <textarea aria-label="Blocked domains for commands" rows={4} value={commandDenied} onChange={event => setCommandDenied(event.target.value)} spellCheck={false} placeholder="gist.github.com" />
-                </label>
-                <p className="field span-2 muted small">One per line. *.example.com matches subdomains only, so list example.com too if you need it. Add :443 to allow one port. Blocked wins over allowed. Allowed traffic leaves through the network proxy above.</p>
-              </>}
-              {commandNetwork !== 'open' && networkSupport && (networkSupport.filtering
-                ? <p className="field span-2 muted small">Enforced on this machine by {runnerName(networkSupport.runner)}.</p>
-                : <div className="field span-2 notice notice-warn" role="status">This machine cannot enforce it{networkSupport.detail ? `: ${networkSupport.detail}` : ''}. Commands will refuse to run until that is fixed.</div>)}
-            </>}
-          </div>)}
+                <p className="field-help">Applies to Project threads by default; sessions can choose their own approval mode.</p>
+              </SettingsCard>
+            </>)}
 
-          {panel('appearance', <div className="form-grid">
-            <ChoiceField
-              id="theme"
-              label="Mode"
-              value={theme}
-              disabled={!onThemeChange}
-              onChange={value => onThemeChange?.(value)}
-              options={[['system', 'System', Monitor], ['light', 'Light', Sun], ['dark', 'Dark', Moon]]}
-            />
-            <div className="field span-2">
-              <span className="field-label" id="settings-palette-label">Colour palette</span>
-              <div className="palette-grid" role="radiogroup" aria-labelledby="settings-palette-label">
-                {PALETTES.map(palette => (
-                  <button
-                    key={palette.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={display.palette === palette.id}
-                    className={`palette-card${display.palette === palette.id ? ' active' : ''}`}
-                    disabled={!onDisplayChange}
-                    onClick={() => onDisplayChange?.('palette', palette.id)}
-                  >
-                    <span className="palette-swatch" aria-hidden>
-                      {(['light', 'dark'] as const).map(mode => (
-                        <span key={mode} className="palette-swatch-half" data-palette={palette.id} data-theme={mode}>
-                          <span className="palette-swatch-card">
-                            <span className="palette-swatch-line strong" />
-                            <span className="palette-swatch-line" />
-                            <span className="palette-swatch-dots"><i className="accent" /><i className="success" /><i className="warn" /><i className="danger" /></span>
+            {hostSettings && panel('tools', <>
+              <SettingsCard title="Shell" labelFor="settings-shell" description="Used by the shell and background-process tools. The agent is told which syntax to write.">
+                <select id="settings-shell" aria-label="Shell" value={shell} onChange={event => setShell(event.target.value)}>
+                  <option value="">Automatic{config?.shell?.active && !stored?.shell ? ` · ${config.shell.active}` : ''}</option>
+                  {config?.shell?.available.map(option => <option key={option.path} value={option.path}>{option.label} · {option.path}</option>)}
+                  {shell && !config?.shell?.available.some(option => option.path === shell) && <option value={shell}>{shell}</option>}
+                </select>
+                <p className="field-help">Git Bash cannot run inside the Windows sandbox; choose it only with full access.</p>
+              </SettingsCard>
+              <SettingsCard title="CodeMode" labelFor="settings-codemode" description="开启后模型只看到 run_code，通过代码调用原有工具。关闭后仅使用原生工具。保存后于下一次运行生效。">
+                <select id="settings-codemode" aria-label="CodeMode" value={codeMode ? 'enabled' : 'disabled'} onChange={event => setCodeMode(event.target.value === 'enabled')}>
+                  <option value="disabled">关闭 · 原生工具</option>
+                  <option value="enabled">开启 · 仅 run_code</option>
+                </select>
+              </SettingsCard>
+              <SettingsCard title="Computer use" labelFor="settings-computer-use" description="Experimental. Uses cua-driver, which must be installed; screenshots of the windows it works in go to the model. Takes effect from the next run.">
+                <select id="settings-computer-use" aria-label="Computer use" value={computerUse ? 'enabled' : 'disabled'} onChange={event => setComputerUse(event.target.value === 'enabled')}>
+                  <option value="disabled">Off</option>
+                  <option value="enabled">On · the agent can see and use your apps</option>
+                </select>
+                {computerUse && <>
+                  <label className="field">
+                    <span className="field-label">Computer use approvals</span>
+                    <select aria-label="Computer use approvals" value={computerApproval} onChange={event => setComputerApproval(event.target.value === 'per-app' ? 'per-app' : 'auto')}>
+                      <option value="auto">Don't ask · only steps the agent flags as risky</option>
+                      <option value="per-app">Ask once per app in each session</option>
+                    </select>
+                    <span className="field-help">Either way, the agent asks you first before a step it judges could do damage or touch your security, such as deleting, sending, paying or changing a password.</span>
+                  </label>
+                  <label className="field">
+                    <span className="field-label">App limits</span>
+                    <textarea aria-label="App limits" rows={3} value={computerApps} onChange={event => setComputerApps(event.target.value)} spellCheck={false} placeholder="Notepad: look&#10;Chrome: click" />
+                    <span className="field-help">One app per line. look: screenshots and reading only. click: click, scroll and menus, no typing. full: everything. Apps not listed are full.</span>
+                  </label>
+                </>}
+              </SettingsCard>
+              <SettingsCard title="File write guard" labelFor="settings-fs-guard" description="实验性。覆盖已有文件时，与本次会话读到的版本比对：warn 只提示，enforce 会拒绝并要求重读。">
+                <select id="settings-fs-guard" aria-label="File write guard" value={fsGuard} onChange={event => { const next = event.target.value; if (isFsGuardMode(next)) setFsGuard(next) }}>
+                  <option value="off">off · 不记录读取版本</option>
+                  <option value="warn">warn · 覆盖被改过的文件时写入并提示</option>
+                  <option value="enforce">enforce · 未读过或被改过则拒绝</option>
+                </select>
+                <p className="field-help">新建文件不受影响；精确编辑（edit_file）的匹配校验始终生效。默认 warn，观察一段时间后再决定是否收紧。</p>
+              </SettingsCard>
+              {config?.network && (
+                <SettingsCard title="Agent web requests" description="The proxy and trusted hosts for the agent's own web tools, skill installs and the commands Command network lets out.">
+                  <label className="field">
+                    <span className="field-label">Network proxy</span>
+                    <input aria-label="Network proxy" value={proxy} onChange={event => setProxy(event.target.value)} spellCheck={false}
+                      placeholder={config.network.environmentProxy ? `From the environment · ${config.network.environmentProxy}` : 'None · direct, or the system proxy in the desktop app'} />
+                    <span className="field-help">Such as http://127.0.0.1:7890. Leave empty to use HTTPS_PROXY from the environment.</span>
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Allowed hosts</span>
+                    <textarea aria-label="Allowed hosts" rows={3} value={allowedHosts} onChange={event => setAllowedHosts(event.target.value)} spellCheck={false} placeholder="docs.example.com&#10;*.example.org" />
+                    <span className="field-help">Requests to private or reserved addresses are blocked. Hosts listed here are trusted whatever their DNS answers, which a proxy in fake-IP mode (198.18.x.x) needs. Trusted already: {config.network.defaultAllowedHosts.join(', ')}.</span>
+                  </label>
+                </SettingsCard>
+              )}
+              {config?.sandbox && (
+                <SettingsCard title="Command network" description={COMMAND_NETWORK_HINTS[commandNetwork]}>
+                  <ChoiceField
+                    id="command-network"
+                    label="Command network"
+                    hideLabel
+                    value={commandNetwork}
+                    onChange={setCommandNetwork}
+                    options={[['open', 'Open'], ['allowlist', 'Listed domains only'], ['off', 'Off']]}
+                  />
+                  {commandNetwork === 'allowlist' && <>
+                    <div className="form-grid">
+                      <label className="field">
+                        <span className="field-label">Allowed domains</span>
+                        <textarea aria-label="Allowed domains for commands" rows={4} value={commandAllowed} onChange={event => setCommandAllowed(event.target.value)} spellCheck={false} placeholder="github.com&#10;*.github.com&#10;registry.npmjs.org:443" />
+                      </label>
+                      <label className="field">
+                        <span className="field-label">Blocked domains</span>
+                        <textarea aria-label="Blocked domains for commands" rows={4} value={commandDenied} onChange={event => setCommandDenied(event.target.value)} spellCheck={false} placeholder="gist.github.com" />
+                      </label>
+                    </div>
+                    <p className="field-help">One per line. *.example.com matches subdomains only, so list example.com too if you need it. Add :443 to allow one port. Blocked wins over allowed. Allowed traffic leaves through the network proxy above.</p>
+                  </>}
+                  {commandNetwork !== 'open' && networkSupport && (networkSupport.filtering
+                    ? <p className="field-help">Enforced on this machine by {runnerName(networkSupport.runner)}.</p>
+                    : <div className="notice notice-warn" role="status">This machine cannot enforce it{networkSupport.detail ? `: ${networkSupport.detail}` : ''}. Commands will refuse to run until that is fixed.</div>)}
+                </SettingsCard>
+              )}
+            </>)}
+
+            {panel('appearance', <>
+              <SettingsCard title="Mode" description="Light, dark, or whatever this device is set to.">
+                <ChoiceField
+                  id="theme"
+                  label="Mode"
+                  hideLabel
+                  value={theme}
+                  disabled={!onThemeChange}
+                  onChange={value => onThemeChange?.(value)}
+                  options={[['light', 'Light', Sun], ['dark', 'Dark', Moon], ['system', 'System', Monitor]]}
+                />
+              </SettingsCard>
+              <SettingsCard title={<span id="settings-palette-label">Colour palette</span>} description="Every palette has a light and a dark version and keeps text readable on every surface.">
+                <div className="palette-grid" role="radiogroup" aria-labelledby="settings-palette-label">
+                  {PALETTES.map(palette => (
+                    <button
+                      key={palette.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={display.palette === palette.id}
+                      className={`palette-card${display.palette === palette.id ? ' active' : ''}`}
+                      disabled={!onDisplayChange}
+                      onClick={() => onDisplayChange?.('palette', palette.id)}
+                    >
+                      <span className="palette-swatch" aria-hidden>
+                        {(['light', 'dark'] as const).map(mode => (
+                          <span key={mode} className="palette-swatch-half" data-palette={palette.id} data-theme={mode}>
+                            <span className="palette-swatch-card">
+                              <span className="palette-swatch-line strong" />
+                              <span className="palette-swatch-line" />
+                            </span>
                           </span>
-                        </span>
-                      ))}
-                    </span>
-                    <span className="palette-name">{palette.label}</span>
-                    <span className="palette-description">{palette.description}</span>
-                  </button>
-                ))}
-              </div>
-              <span className="muted small">Every palette has a light and a dark version and keeps text readable on every surface. Agent weather keeps its colours.</span>
-            </div>
-            <ChoiceField
-              id="density"
-              label="Density"
-              value={display.density}
-              disabled={!onDisplayChange}
-              onChange={value => onDisplayChange?.('density', value)}
-              options={[['compact', 'Compact'], ['comfortable', 'Comfortable']]}
-              hint="Compact fits more rows and controls on screen; comfortable gives them more room."
-            />
-            <ChoiceField
-              id="text-size"
-              label="Text size"
-              value={display.textSize}
-              disabled={!onDisplayChange}
-              onChange={value => onDisplayChange?.('textSize', value)}
-              options={[['small', 'Small'], ['default', 'Default'], ['large', 'Large']]}
-            />
-            <ChoiceField
-              id="glass"
-              label="Glass"
-              value={display.glass}
-              disabled={!onDisplayChange}
-              onChange={value => onDisplayChange?.('glass', value)}
-              options={[['floating', 'Floating only'], ['full', 'Everywhere'], ['off', 'Off']]}
-              hint="Glass blurs what is behind a surface. Floating only keeps it on menus and dialogs; everywhere brings it to the sidebar, header, composer and Workbench; off is a solid app."
-            />
+                        ))}
+                      </span>
+                      <span className="palette-name">{palette.label}</span>
+                      <span className="palette-description">{palette.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </SettingsCard>
+              <SettingsCard title="Density" description="Compact fits more rows and controls on screen; comfortable gives them more room.">
+                <ChoiceField id="density" label="Density" hideLabel value={display.density} disabled={!onDisplayChange} onChange={value => onDisplayChange?.('density', value)} options={[['compact', 'Compact'], ['comfortable', 'Comfortable']]} />
+              </SettingsCard>
+              <SettingsCard title="Text size" description="Scales every size in the type ramp together.">
+                <ChoiceField id="text-size" label="Text size" hideLabel value={display.textSize} disabled={!onDisplayChange} onChange={value => onDisplayChange?.('textSize', value)} options={[['small', 'Small'], ['default', 'Default'], ['large', 'Large']]} />
+                <p className="settings-preview">The quick brown fox reads the whole diff before it jumps.</p>
+              </SettingsCard>
+              <SettingsCard title="Conversation width" description="Wider columns show more of long tables, diffs and tool output without scrolling.">
+                <ChoiceField id="reading-width" label="Conversation width" hideLabel value={display.readingWidth} disabled={!onDisplayChange} onChange={value => onDisplayChange?.('readingWidth', value)} options={[['narrow', 'Narrow'], ['standard', 'Standard'], ['wide', 'Wide'], ['full', 'Full width']]} />
+              </SettingsCard>
+              <SettingsCard title="Glass" description="Blurs what is behind a surface: on menus and dialogs only, everywhere, or a solid app.">
+                <ChoiceField id="glass" label="Glass" hideLabel value={display.glass} disabled={!onDisplayChange} onChange={value => onDisplayChange?.('glass', value)} options={[['floating', 'Floating only'], ['full', 'Everywhere'], ['off', 'Off']]} />
+              </SettingsCard>
+            </>)}
 
-            <ChoiceField
-              id="reading-width"
-              label="Conversation width"
-              value={display.readingWidth}
-              disabled={!onDisplayChange}
-              onChange={value => onDisplayChange?.('readingWidth', value)}
-              options={[['narrow', 'Narrow'], ['standard', 'Standard'], ['wide', 'Wide'], ['full', 'Full width']]}
-              hint="Wider columns show more of long tables, diffs and tool output without scrolling."
-            />
-          </div>)}
-
-          {panel('about', <>
-            {updates
-              ? <UpdateSettings updates={updates} />
-              : <p className="muted small">This is the Web interface. Update the CLI with <code>npm install -g tnega</code>; the desktop app updates itself.</p>}
-            <div className="effective-card">
-              <div className="effective-row"><span>Config file</span><strong className="mono" title={stored?.path}>{stored?.path ?? '~/.tnega/config.json'}</strong></div>
-            </div>
-          </>)}
+            {panel('about', <>
+              <SettingsCard title="Updates" description={updates ? 'This app checks for new versions and installs them when you say so.' : 'This is the Web interface. The desktop app updates itself.'}>
+                {updates
+                  ? <UpdateSettings updates={updates} />
+                  : <p className="field-help">Update the CLI with <code>npm install -g tnega</code>.</p>}
+              </SettingsCard>
+              <SettingsCard title="Config file" description="Where these settings are stored on the host.">
+                <code className="settings-path" title={stored?.path}>{stored?.path ?? '~/.tnega/config.json'}</code>
+              </SettingsCard>
+            </>)}
+          </div>
+          {hostSettings && (
+            <footer className={`settings-footer${dirty || error ? ' is-dirty' : ''}`}>
+              {error
+                ? <span className="form-error" role="alert">{error}</span>
+                : <span className="settings-footer-note">{dirty ? 'You have unsaved changes.' : 'Models, approvals and tools save together.'}</span>}
+              <button type="button" className="button ghost" onClick={() => void close()}>Cancel</button>
+              <button type="button" className={`button ${dirty ? 'primary' : 'secondary'}`} onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+            </footer>
+          )}
         </div>
       </div>
     </Dialog>

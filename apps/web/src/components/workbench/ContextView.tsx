@@ -1,4 +1,4 @@
-import { Gauge, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { errorText } from '../../lib/hooks'
@@ -8,6 +8,7 @@ import type { ContextToolUse, SessionContextReport } from '../../lib/types'
 import { formatCost, formatRate } from '../../lib/usage'
 import { Section, Stat } from '../context/charts'
 import { ContextTrend, CurrentContext, TimingStats, TokenStats } from '../context/ContextParts'
+import { EmptyState } from '../EmptyState'
 
 /** How often the tab re-reads the session while it is on screen. */
 export const CONTEXT_REFRESH_MS = 5_000
@@ -44,10 +45,7 @@ export function ContextView({ workspace, sessionId, visible }: { workspace: stri
       <div className="wb-view" aria-label="Context">
         <div className="wb-toolbar"><span className="wb-toolbar-title">Context</span></div>
         <div className="wb-card">
-          <div className="wb-empty">
-            <Gauge size={20} aria-hidden />
-            <p>Open a session to see what its context is made of: stats, the token split, timing and how the window grew.</p>
-          </div>
+          <EmptyState arrow="left">Open a session to see what its context is made of: the token split, timing and how the window grew.</EmptyState>
         </div>
       </div>
     )

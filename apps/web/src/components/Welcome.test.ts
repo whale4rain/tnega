@@ -50,3 +50,14 @@ it('shows nothing to pick up in a folder without sessions', () => {
   const view = render(createElement(WelcomeRecent, { sessions: [], onOpen: vi.fn() }))
   expect(view.container.innerHTML).toBe('')
 })
+
+it('puts a session waiting on you first and says so', () => {
+  const now = Date.UTC(2026, 10, 12, 12)
+  const hour = 3_600_000
+  const view = render(createElement(WelcomeRecent, {
+    sessions: [session('a', 'Fix login', now - hour), { ...session('b', 'Ship it', now - 50 * hour), waiting: true }],
+    onOpen: vi.fn(),
+    now,
+  }))
+  expect(view.getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['Ship it, waiting on you', 'Fix login, 1h ago'])
+})

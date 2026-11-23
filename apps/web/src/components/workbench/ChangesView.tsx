@@ -3,6 +3,7 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { errorText } from '../../lib/hooks'
 import type { Focus } from '../../lib/workbench'
 import { workbenchApi, type ChangedFile, type ChangeStatus, type ChangeSummary, type FileDiff } from '../../lib/workbench-api'
+import { EmptyState, Loading } from '../EmptyState'
 
 const DiffEditor = lazy(() => import('./DiffEditor'))
 
@@ -123,18 +124,12 @@ export function ChangesView({
       <div className="wb-card wb-split">
         {error && <div className="notice notice-error wb-notice" role="alert"><span>{error}</span></div>}
         {summary && !summary.git && (
-          <div className="wb-empty">
-            <GitBranch size={18} />
-            <p>This workspace is not a git repository. Each turn still lists the files it changed in the conversation.</p>
-          </div>
+          <EmptyState arrow="left">This folder is not a git repository. Each turn still lists the files it changed in the conversation.</EmptyState>
         )}
         {summary?.git && files?.length === 0 && (
-          <div className="wb-empty">
-            <GitBranch size={18} />
-            <p>No changes since the last commit. Edits from you or the agent appear here as they happen.</p>
-          </div>
+          <EmptyState arrow="left">No changes since the last commit. Edits from you or the agent show up here.</EmptyState>
         )}
-        {!summary && !error && <div className="file-preview-status"><span className="spinner" /> Reading changes…</div>}
+        {!summary && !error && <Loading>Reading changes…</Loading>}
         {files && files.length > 0 && (
           <>
             <nav className="wb-list" aria-label="Changed files">
@@ -142,7 +137,7 @@ export function ChangesView({
               {summary?.truncated && <p className="muted small wb-list-note">Showing the first {files.length} files.</p>}
             </nav>
             <section className="wb-detail">
-              {(!diff || diff.path !== selected) && <div className="file-preview-status"><span className="spinner" /> Opening diff…</div>}
+              {(!diff || diff.path !== selected) && <Loading>Opening diff…</Loading>}
               {diff && diff.path === selected && diff.reason && (
                 <div className="file-preview-status">
                   {diff.reason === 'binary' ? 'Binary file — no text diff.' : 'Too large to diff here.'}
@@ -152,7 +147,7 @@ export function ChangesView({
                 </div>
               )}
               {diff && diff.path === selected && !diff.reason && (
-                <Suspense fallback={<div className="file-preview-status"><span className="spinner" /> Opening diff…</div>}>
+                <Suspense fallback={<Loading>Opening diff…</Loading>}>
                   <DiffEditor key={`${diff.path}:${layout}`} path={diff.path} original={diff.original ?? ''} modified={diff.modified ?? ''} layout={layout} />
                 </Suspense>
               )}

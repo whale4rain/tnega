@@ -37,7 +37,12 @@ export function eyeOffset(dx: number, dy: number, range = 320): { x: number; y: 
   return { x: (dx / distance) * reach, y: (dy / distance) * reach * 0.7 }
 }
 
-/** The sessions a new session offers to pick up: the three most recently updated. */
+/**
+ * The sessions a new session offers to pick up: up to three, any waiting on you first
+ * (whose turn it is comes first), then the most recently updated.
+ */
 export function recentSessions(sessions: readonly SessionSummary[], count = 3): SessionSummary[] {
-  return [...sessions].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, count)
+  return [...sessions]
+    .sort((a, b) => Number(b.waiting === true) - Number(a.waiting === true) || b.updatedAt - a.updatedAt)
+    .slice(0, count)
 }

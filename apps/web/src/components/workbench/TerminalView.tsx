@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom'
 import { errorText, useDismiss } from '../../lib/hooks'
 import { terminalClipboardKey } from '../../lib/terminal-keys'
 import { workbenchApi, type TerminalInfo } from '../../lib/workbench-api'
+import { EmptyState } from '../EmptyState'
 
 /**
  * Your own shell in the workspace, on a real PTY. Several terminals can run
@@ -79,10 +80,7 @@ export function TerminalView({ workspace, visible }: { workspace: string; visibl
       <div className="wb-card terminal-card">
         {error && <div className="notice notice-error wb-notice" role="alert"><span>{error}</span></div>}
         {terminals && terminals.length === 0 && !error && (
-          <div className="wb-empty">
-            <SquareTerminal size={18} />
-            <p>No terminal is open. <button type="button" className="link-button inline" onClick={() => void create()}>Open one</button> in this workspace.</p>
-          </div>
+          <EmptyState arrow="down" action={{ label: 'Start a terminal', onClick: () => void create() }}>Start a terminal in this workspace.</EmptyState>
         )}
         {active && <XtermPane key={active} id={active} visible={visible} />}
       </div>

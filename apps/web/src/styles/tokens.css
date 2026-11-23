@@ -16,24 +16,34 @@
   --font-sans: "Geist Variable", "Geist", "Noto Sans SC Variable", "Noto Sans SC", ui-sans-serif, -apple-system, BlinkMacSystemFont,
     "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Noto Sans SC Variable", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  /* High-contrast serif for a few words of mood (the Board greeting, the welcome); never body text. */
-  --font-display: "Fraunces Variable", "Fraunces", "Noto Sans SC Variable", Georgia, "Times New Roman", serif;
+  /* Umbrella titles: Geist at 700 with tight tracking, sturdy like the handle (tnega-design §6.1). A few words only. */
+  --font-display: "Geist Variable", "Geist", "Noto Sans SC Variable", ui-sans-serif, -apple-system, "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --display-weight: 700;
+  --display-tracking: -0.025em;
 
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-lg: 14px;
-  --text-xl: 18.5px;
-  --text-2xl: 24px;
-  /* The new-session greeting only: a few words of welcome, in the display serif. */
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-md: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 19px;
+  --text-2xl: 26px;
+  /* The new-session greeting only: a few words of welcome, in the display font. */
   --text-3xl: 34px;
 
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  /* Umbrella shapes (tnega-design §3.8): soft, concentric, never outlined. Panels 2xl, cards xl, fields lg,
+     buttons and chips are pills. Inner radius = outer radius − padding. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 22px;
+  /* Dialogs and sheets: the panel radius plus the 6 inset (foundations.md). */
+  --radius-dialog: calc(var(--radius-2xl) + 6px);
   --radius-full: 999px;
+
+  /* The hand layer (tnega-design §3.9): one pen, drawn in over --pen-draw when a mark first lands. */
+  --pen-draw: 380ms;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -50,15 +60,30 @@
    * (TITLE_BAR_HEIGHT), so the native window controls sit inside it.
    */
   --header-h: 32px;
+  /* Umbrella: the gap between the window ground and the panels floating on it. */
+  --panel-gap: 10px;
   --toolbar-h: 28px;
   --control-lg: 32px;
   --control: 26px;
   --control-sm: 22px;
   --row-h: 26px;
+  /* Umbrella controls (docs/design/umbrella/controls.md): pill buttons, sunken fields, switches. */
+  --button-h: 38px;
+  --button-h-sm: 32px;
+  --button-h-lg: 44px;
+  --field-h: 40px;
+  --nav-pill-h: 34px;
+  /* The Workbench tab row (umbrella/work.md). */
+  --tabs-h: 40px;
+  --menu-item-h: 36px;
+  /* The composer pill (umbrella/composer.md): 52 tall at rest, round 40 buttons inside a 6 inset, so 26 = 20 + 6. */
+  --composer-h: 52px;
+  --composer-button: 40px;
+  --radius-composer: 26px;
   --icon: 14px;
   --icon-sm: 12px;
   /* The sidebar is read at a glance, so its rows and icons are a size up from the rest of the chrome. */
-  --nav-row-h: 30px;
+  --nav-row-h: 36px;
   --nav-icon: 16px;
 
   --sidebar-width: 264px;
@@ -69,6 +94,8 @@
   --scroll-fade: 28px;
 
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* The hand tick (PenMark done) as a mask for CSS-drawn checks; its colour comes from --pen. */
+  --pen-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4.4 10.6l3.7 3.6 7.6-8.6' fill='none' stroke='currentColor' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --duration-fast: 120ms;
   --duration-med: 200ms;
   /* Folding the sidebar or the Workbench in and out (PANEL_MS in lib/panels.ts). */
@@ -91,6 +118,10 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
+  /* Switch (controls.md): grey track off, ink on; the knob stays visible on both. Derived per palette. */
+  --switch-off: color-mix(in srgb, var(--text) 24%, var(--surface));
+  --switch-knob-off: var(--surface-raised);
+  --switch-knob-on: var(--surface-raised);
   --bg: #f4f6f8;
   --bg-sidebar: #eceff3;
   --surface: #ffffff;
@@ -138,9 +169,12 @@
   --syntax-type: #9a3a63;
   --syntax-property: #1b5f75;
 
-  --shadow-sm: 0 1px 2px rgba(20, 32, 52, 0.06);
-  --shadow-md: 0 1px 2px rgba(20, 32, 52, 0.05), 0 6px 18px -6px rgba(20, 32, 52, 0.13);
-  --shadow-lg: 0 2px 6px rgba(20, 32, 52, 0.06), 0 24px 48px -12px rgba(20, 32, 52, 0.24);
+  /* Umbrella: surfaces in the page never cast shadows; only popovers (md) and dialogs (lg) do. */
+  --shadow-sm: none;
+  --shadow-md: 0 12px 32px -12px rgba(14, 14, 14, 0.18);
+  --shadow-lg: 0 24px 64px -20px rgba(14, 14, 14, 0.28);
+  --disc: #b6b6b6;
+  --pen: var(--text);
   --scrim: rgba(18, 26, 40, 0.3);
   --avatar-ink: #1d2230;
 
@@ -168,6 +202,9 @@
  */
 [data-theme="dark"] {
   color-scheme: dark;
+  --switch-off: color-mix(in srgb, var(--text) 26%, var(--surface));
+  --switch-knob-off: var(--text-2);
+  --switch-knob-on: var(--surface-raised);
   --bg: #0f131a;
   --bg-sidebar: #0c1016;
   --surface: #171c26;
@@ -214,9 +251,11 @@
   --syntax-type: #f2a0c0;
   --syntax-property: #7fd3e6;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.45), 0 28px 60px -12px rgba(0, 0, 0, 0.7);
+  --shadow-sm: none;
+  --shadow-md: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.75);
+  --disc: #3a3a3d;
+  --pen: var(--text);
   --scrim: rgba(4, 6, 10, 0.62);
   --avatar-ink: #4d566a;
 
@@ -585,6 +624,93 @@
   --syntax-property: #80d0e8;
 }
 
+/* Umbrella (default since 2026-11-22, tnega-design §3.4): a flat light-grey ground, near-white surfaces and one ink.
+   No accent colour: the one thing to press is solid ink, everything else is grey. Meaning lives in the hand-drawn
+   marks (§3.9); status colours only appear on errors, diffs and warnings. Dark is chalk on slate. */
+[data-palette="umbrella"][data-theme="light"] {
+  --bg: #f7f7f7;
+  --bg-sidebar: #ececec;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e8e8e8;
+  --surface-hover: rgba(14, 14, 14, 0.05);
+  --surface-active: rgba(14, 14, 14, 0.085);
+  --border: #d6d6d6;
+  --border-strong: #b0b0b0;
+  --border-focus: #0e0e0e;
+
+  --text: #0e0e0e;
+  --text-2: #3a3a3c;
+  --text-3: #545457;
+  --text-inverse: #f7f7f7;
+
+  --accent: #0e0e0e;
+  --accent-hover: #2a2a2c;
+  --accent-soft: #e0e0e0;
+  --accent-text: #1c1c1e;
+
+  --success: #1f6a3a;
+  --success-soft: #dcebe1;
+  --warn: #7a4c00;
+  --warn-soft: #f1e6d2;
+  --danger: #a62b25;
+  --danger-soft: #f4dfdd;
+
+  --code-bg: #f1f1f1;
+  --code-border: #dedede;
+  --selection: rgba(14, 14, 14, 0.12);
+
+  --syntax-keyword: #7f3470;
+  --syntax-string: #1f6a3a;
+  --syntax-number: #7a4c00;
+  --syntax-comment: #545457;
+  --syntax-function: #285480;
+  --syntax-type: #8c2a53;
+  --syntax-property: #13566e;
+}
+
+[data-palette="umbrella"][data-theme="dark"] {
+  --bg: #1b1b1d;
+  --bg-sidebar: #151516;
+  --surface: #242426;
+  --surface-raised: #2b2b2d;
+  --surface-sunken: #131314;
+  --surface-hover: rgba(255, 255, 255, 0.055);
+  --surface-active: rgba(255, 255, 255, 0.09);
+  --border: #38383b;
+  --border-strong: #4a4a4e;
+  --border-focus: #e8e8e8;
+
+  --text: #ececec;
+  --text-2: #c4c4c7;
+  --text-3: #9d9da1;
+  --text-inverse: #121213;
+
+  --accent: #e8e8e8;
+  --accent-hover: #ffffff;
+  --accent-soft: rgba(255, 255, 255, 0.09);
+  --accent-text: #e0e0e0;
+
+  --success: #84d4a2;
+  --success-soft: rgba(132, 212, 162, 0.12);
+  --warn: #eec070;
+  --warn-soft: rgba(238, 192, 112, 0.12);
+  --danger: #f58e86;
+  --danger-soft: rgba(245, 142, 134, 0.12);
+
+  --code-bg: #121213;
+  --code-border: #343437;
+  --selection: rgba(255, 255, 255, 0.16);
+
+  --syntax-keyword: #d6a8e8;
+  --syntax-string: #84d4a2;
+  --syntax-number: #eec070;
+  --syntax-comment: #9d9da1;
+  --syntax-function: #a9c7e8;
+  --syntax-type: #f5a3c4;
+  --syntax-property: #80d0e8;
+}
+
 /*
  * Chart series (Context tab, Settings → Context insights). Each series borrows
  * a syntax colour, so every palette in both modes gets its own muted, distinct
@@ -617,25 +743,25 @@
   --control-sm: 26px;
   --row-h: 32px;
   --icon: 15px;
-  --nav-row-h: 34px;
+  --nav-row-h: 40px;
   --nav-icon: 17px;
 }
 
 [data-text-size="small"] {
-  --text-xs: 10.5px;
-  --text-sm: 11.5px;
-  --text-md: 12px;
-  --text-lg: 13px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
   --text-3xl: 32px;
 }
 
 [data-text-size="large"] {
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-md: 14.5px;
-  --text-lg: 15.5px;
-  --text-xl: 20.5px;
-  --text-2xl: 26.5px;
+  --text-xs: 12.5px;
+  --text-sm: 13.5px;
+  --text-md: 15px;
+  --text-lg: 16.5px;
+  --text-xl: 21px;
+  --text-2xl: 28.5px;
   --text-3xl: 37px;
 }
 

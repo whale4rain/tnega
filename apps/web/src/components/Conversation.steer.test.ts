@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { api, streamRun } from '../lib/api'
@@ -108,7 +108,7 @@ it('keeps the queue waiting after a stop, and edits a message back into the box'
   expect(await view.findByText('Your queued messages are waiting: send, edit or remove them.')).toBeTruthy()
   expect(stream).toHaveBeenCalledTimes(1)
   const queued = view.getByRole('region', { name: 'Queued messages' })
-  expect(queued.querySelector('button.button')?.textContent).toBe('Send')
+  expect(within(queued).getByRole('button', { name: 'Send now' })).toBeTruthy()
 
   fireEvent.click(view.getByRole('button', { name: 'Edit queued message' }))
   await waitFor(() => expect((view.getByRole('textbox') as HTMLTextAreaElement).value).toContain('maybe later'))

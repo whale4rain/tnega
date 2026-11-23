@@ -1,63 +1,55 @@
-import {
-  Ban,
-  CheckCheck,
-  ChevronRight,
-  CircleAlert,
-  CircleCheck,
-  CircleHelp,
-  CirclePlay,
-  FileText,
-  GitBranch,
-  GitPullRequest,
-  MessageSquareText,
-  RotateCcw,
-  Square,
-  type LucideIcon,
-} from 'lucide-react'
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { CheckCheck, ChevronRight, RotateCcw, Square } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { relativeTime } from '../../lib/hooks'
 import { projectApi } from '../../lib/project-api'
 import {
-  board,
-  boardFeed,
-  checklistProgress,
-  formatActive,
-  formatCount,
-  gitResources,
+  boardColumn,
   startOfDay,
   threadActivity,
-  threadArtifacts,
-  threadLight,
   threadState,
-  greeting,
-  LIGHT_LABEL,
-  PULL_REQUEST_LABEL,
-  type BoardColumn,
-  type BoardEvent,
-  type BoardEventKind,
+  workerThreads,
   type ProjectState,
 } from '../../lib/project-model'
-import { PULL_REQUEST_ICON } from '../PullRequestMark'
-import type { ArtifactFact, ProjectUsage, ResourceFact, ThreadRecord, ThreadState } from '../../lib/project-types'
-import { StatusLight } from '../StatusLight'
-import { ArtifactContext, ArtifactIcon } from './Artifacts'
+import type { ThreadRecord } from '../../lib/project-types'
+import { EmptyState } from '../EmptyState'
+import { PenMark } from '../PenMark'
+import { WorkRow, type WorkRowTone } from '../WorkRow'
+import { threadMark } from './ThreadCard'
 
-/** Lanes with nothing for you to do fold into one line. */
-const FOLDED: ReadonlySet<BoardColumn['key']> = new Set(['idle', 'resolved'])
+const FINISHED: ReadonlySet<string> = new Set(['done', 'resolved'])
 
-/** What an empty lane says in the side-by-side kanban. */
-const EMPTY_LANE: Partial<Record<BoardColumn['key'], string>> = {
-  needs: 'Nothing waiting on you',
-  working: 'No thread running',
-  ready: 'No new results',
+/** The Board's groups, in the order it answers: what needs me, what is moving, what waits elsewhere. */
+export interface BoardGroups {
+  /** Waiting on you, blocked, failed, or a result you have not opened yet. */
+  yours: ThreadRecord[]
+  /** Running now. */
+  onIt: ThreadRecord[]
+  /** Paused, waiting on another agent, a message or a schedule. */
+  others: ThreadRecord[]
+  /** Finished and read, or resolved. */
+  done: ThreadRecord[]
+}
+
+/** Threads sorted into the Board's groups, most recently changed first. */
+export function boardGroups(state: ProjectState, seen: Readonly<Record<string, number>>): BoardGroups {
+  const groups: BoardGroups = { yours: [], onIt: [], others: [], done: [] }
+  for (const thread of workerThreads(state)) {
+    const column = boardColumn(state, thread, seen)
+    const current = threadState(state, thread)
+    if (column === 'needs' || column === 'ready') groups.yours.push(thread)
+    else if (column === 'working') groups.onIt.push(thread)
+    else if (column === 'resolved' || current === 'done') groups.done.push(thread)
+    else groups.others.push(thread)
+  }
+  for (const list of [groups.yours, groups.onIt, groups.others, groups.done]) list.sort((a, b) => b.updatedAt - a.updatedAt)
+  return groups
 }
 
 /**
- * The Board: where you go to see how the work stands and collect results.
- * The project's weather and a strip with one segment per thread, then
- * threads by where they stand — needs you, working, ready — with idle and
- * resolved ones folded away, and the last few things threads did. In a wide
- * panel the lanes sit side by side as a kanban; in a narrow one they stack.
+ * The Board (work.md): "what needs me, what is moving", in that order. The project's name and how
+ * many threads are going; then Your turn, On it and Waiting on others as work rows; then one line,
+ * "N done today", which opens the finished threads grouped by day. No progress bars, outputs,
+ * tokens or minutes: those live in the thread itself. The Board is not a dashboard.
  */
 export function BoardPanel({
   workspace,
@@ -71,19 +63,18 @@ export function BoardPanel({
   onOpenThread: (id: string) => void
 }) {
   const projectId = state.project.id
-  const usage = useUsage(workspace, state)
-  const columns = useMemo(() => board(state, seen), [state, seen])
-  const feed = useMemo(() => boardFeed(state), [state])
-  const hello = greeting(columns, state, Date.now(), usage)
-  const usageOf = (id: string) => usage?.byThread.find(entry => entry.threadId === id)
-  const total = columns.reduce((sum, column) => sum + column.threads.length, 0)
+  const groups = useMemo(() => boardGroups(state, seen), [state, seen])
+  const total = groups.yours.length + groups.onIt.length + groups.others.length + groups.done.length
+  // Going: everything not finished. A result you have not opened is in Your turn but is not going.
+  const going = [...groups.yours, ...groups.onIt, ...groups.others]
+    .filter(thread => !FINISHED.has(threadState(state, thread))).length
   const [error, setError] = useState<string | undefined>()
 
   const act = (run: () => Promise<unknown>) => {
     setError(undefined)
     run().catch(reason => setError(reason instanceof Error ? reason.message : String(reason)))
   }
-  const actions: CardActions = {
+  const actions: RowActions = {
     open: onOpenThread,
     resolve: (id, resolved) => act(() => projectApi.resolveThread(workspace, projectId, id, resolved)),
     stop: id => act(() => projectApi.stopThread(workspace, projectId, id)),
@@ -91,292 +82,134 @@ export function BoardPanel({
 
   return (
     <div className="wb-view board" aria-label="Board">
-      <div className="wb-toolbar">
-        <span className="wb-toolbar-title">Board</span>
-      </div>
       <div className="wb-card wb-flow wb-scroll board-scroll">
-        <header className="board-intro" aria-label="Greeting">
-          <h2 className="board-greeting">{hello.title}</h2>
-          <p className="board-now">{hello.now}</p>
-          {hello.recap && <p className="board-recap">{hello.recap}</p>}
+        <header className="board-head">
+          <h2 className="board-title">{state.project.name}</h2>
+          {going > 0 && <span className="board-going">{going} going</span>}
         </header>
         {error && <div className="notice notice-error"><span>{error}</span></div>}
         {total === 0
-          ? (
-            <div className="board-empty">
-              <p>No threads yet.</p>
-              <span>Ask for something in the conversation. Each focused task gets its own thread, and it shows up here with its checklist, outputs and what it costs.</span>
-            </div>
-          )
+          ? <EmptyState arrow="left">Ask for something in the conversation. Each focused task gets its own thread, and it shows up here.</EmptyState>
           : (
-            <div className="board-lanes">
-              {columns.filter(column => !FOLDED.has(column.key)).map(column => (
-                <Lane key={column.key} column={column} state={state} usageOf={usageOf} actions={actions} />
-              ))}
-            </div>
+            <>
+              <Group label="Your turn" threads={groups.yours} state={state} seen={seen} tone="you" actions={actions} />
+              <Group label="On it" threads={groups.onIt} state={state} seen={seen} tone="flat" actions={actions} />
+              <Group label="Waiting on others" threads={groups.others} state={state} seen={seen} tone="flat" actions={actions} />
+              <DoneLine threads={groups.done} state={state} seen={seen} actions={actions} />
+            </>
           )}
-        <Folded columns={columns.filter(column => FOLDED.has(column.key))} state={state} usageOf={usageOf} actions={actions} />
-        {feed.length > 0 && <Recently feed={feed} onOpenThread={onOpenThread} />}
       </div>
     </div>
   )
 }
 
-const FEED: Record<BoardEventKind, { verb: string; icon: LucideIcon; tone?: 'warn' | 'danger' | 'success' }> = {
-  started: { verb: 'started', icon: CirclePlay },
-  reported: { verb: 'reported', icon: MessageSquareText },
-  finished: { verb: 'finished', icon: CircleCheck, tone: 'success' },
-  asked: { verb: 'asked', icon: CircleHelp, tone: 'warn' },
-  blocked: { verb: 'got blocked', icon: Ban, tone: 'warn' },
-  failed: { verb: 'failed', icon: CircleAlert, tone: 'danger' },
-  output: { verb: 'added', icon: FileText },
-  pushed: { verb: 'pushed', icon: GitBranch },
-  'pull-request': { verb: 'opened pull request', icon: GitPullRequest },
-}
-
-/** The last few things threads did, newest first; each line opens its thread. */
-function Recently({ feed, onOpenThread }: { feed: BoardEvent[]; onOpenThread: (id: string) => void }) {
-  return (
-    <section className="board-feed" aria-label="Recently">
-      <h3 className="board-feed-head">Recently</h3>
-      <ul className="board-feed-list">
-        {feed.map(event => {
-          const meta = FEED[event.kind]
-          return (
-            <li key={event.id}>
-              <button type="button" className="board-feed-row" onClick={() => onOpenThread(event.threadId)}>
-                <meta.icon size={14} className={`board-feed-icon${meta.tone ? ` tone-${meta.tone}` : ''}`} aria-hidden />
-                <span className="board-feed-text">
-                  <strong>{event.label}</strong> {meta.verb}{event.text && <span className="board-feed-detail">: {event.text}</span>}
-                </span>
-                <span className="board-feed-time">{relativeTime(event.at)}</span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-    </section>
-  )
-}
-
-interface CardActions {
+interface RowActions {
   open: (id: string) => void
   resolve: (id: string, resolved: boolean) => void
   stop: (id: string) => void
 }
 
-type UsageOf = (id: string) => ProjectUsage['byThread'][number] | undefined
-
-function Lane({ column, state, usageOf, actions }: { column: BoardColumn; state: ProjectState; usageOf: UsageOf; actions: CardActions }) {
-  return (
-    <section className={`board-lane lane-${column.key}`} aria-label={column.label}>
-      <h3 className="board-lane-head" title={column.hint}>
-        <span className={`lane-dot lane-dot-${column.key}`} aria-hidden />
-        <span>{column.label}</span>
-        <span className="count">{column.threads.length}</span>
-      </h3>
-      <div className="board-lane-cards">
-        {column.threads.map(thread => (
-          <BoardCard key={thread.id} thread={thread} column={column.key} state={state} usage={usageOf(thread.id)} actions={actions} />
-        ))}
-        {column.threads.length === 0 && <div className="board-lane-empty">{EMPTY_LANE[column.key] ?? 'Nothing here'}</div>}
-      </div>
-    </section>
-  )
-}
-
-/**
- * Threads with nothing pending stay out of the way: idle and resolved ones
- * fold into one line under the lanes and open together.
- */
-function Folded({ columns, state, usageOf, actions }: { columns: BoardColumn[]; state: ProjectState; usageOf: UsageOf; actions: CardActions }) {
-  const [open, setOpen] = useState(false)
-  const shown = columns.filter(column => column.threads.length > 0)
-  if (shown.length === 0) return null
-  return (
-    <section className={`board-resolved${open ? ' open' : ''}`}>
-      <button type="button" className="board-resolved-head" onClick={() => setOpen(value => !value)} aria-expanded={open}>
-        <ChevronRight size={12} className="chevron" />
-        {shown.map((column, index) => (
-          <span key={column.key} title={column.hint}>
-            {index > 0 && <span className="sep" aria-hidden>·</span>}
-            {column.label} <span className="count">{column.threads.length}</span>
-          </span>
-        ))}
-      </button>
-      {open && (
-        <div className="board-lane-cards">
-          {shown.flatMap(column => column.threads.map(thread => (
-            <BoardCard key={thread.id} thread={thread} column={column.key} state={state} usage={usageOf(thread.id)} actions={actions} />
-          )))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-/** The verb before a card's time: what the thread last did. */
-const WHEN: Record<ThreadState, string> = {
-  waiting: 'Asked',
-  blocked: 'Blocked',
-  failed: 'Failed',
-  working: 'Updated',
-  done: 'Reported',
-  idle: 'Updated',
-  resolved: 'Resolved',
-}
-
-/** Outputs shown on a card before the rest fold into "+N". */
-const CARD_OUTPUTS = 3
-
-function BoardCard({
-  thread,
-  column,
-  state,
-  usage,
-  actions,
-}: {
-  thread: ThreadRecord
-  column: BoardColumn['key']
+function Group({ label, threads, state, seen, tone, actions }: {
+  label: string
+  threads: ThreadRecord[]
   state: ProjectState
-  usage: ProjectUsage['byThread'][number] | undefined
-  actions: CardActions
+  seen: Readonly<Record<string, number>>
+  tone: WorkRowTone
+  actions: RowActions
 }) {
-  const openArtifact = useContext(ArtifactContext)
-  // The Ready lane holds results you have not opened: their light is green.
-  const light = column === 'ready' ? 'ready' : threadLight(state, thread)
-  const activity = threadActivity(state, thread)
-  const tokens = usage ? usage.promptTokens + usage.completionTokens : undefined
-  const outputs = cardOutputs(state, thread.id)
-  const hidden = outputs.length - CARD_OUTPUTS
+  if (threads.length === 0) return null
   return (
-    <div className={`board-card col-${column}`}>
-      <StatusLight tone={light} label={LIGHT_LABEL[light]} />
-      <div className="board-card-body">
-        {/* The title is the card's one button; it stretches over the whole card. */}
-        <button type="button" className="board-card-open" onClick={() => actions.open(thread.id)} title={thread.goal}>
-          {thread.label}
-        </button>
-        {activity && <span className="board-card-activity">{activity}</span>}
-        <Steps thread={thread} />
-        {outputs.length > 0 && (
-          <span className="board-card-outputs">
-            {outputs.slice(0, CARD_OUTPUTS).map(output => output.kind === 'artifact'
-              ? (
-                <button key={output.artifact.id} type="button" className="board-chip board-output" title={`Open ${output.artifact.data.title}`}
-                  onClick={() => openArtifact ? openArtifact(output.artifact) : actions.open(thread.id)}>
-                  <ArtifactIcon mediaType={output.artifact.data.mediaType} size={12} />
-                  <span className="board-output-name">{output.artifact.data.title}</span>
-                </button>
-              )
-              : <GitChip key={output.resource.id} resource={output.resource} />)}
-            {hidden > 0 && (
-              <button type="button" className="board-chip board-output" title="Open the thread to see every output" onClick={() => actions.open(thread.id)}>
-                +{hidden}
-              </button>
-            )}
-          </span>
-        )}
-        <span className="board-card-foot">
-          <span>{WHEN[threadState(state, thread)]} {relativeTime(thread.updatedAt)}</span>
-          {usage?.activeMs ? <span title="Time spent working">{formatActive(usage.activeMs)} active</span> : null}
-          {tokens ? <span title="Tokens used">{formatCount(tokens)} tokens</span> : null}
-        </span>
+    <section className="board-group" aria-label={label}>
+      <h3 className="board-group-head">{label} <span className="count">{threads.length}</span></h3>
+      <div className="board-rows">
+        {threads.map(thread => <BoardRow key={thread.id} thread={thread} state={state} seen={seen} tone={tone} actions={actions} />)}
       </div>
-      <span className="board-card-actions">
-        {column === 'working' && (
-          <button type="button" className="icon-button tiny" aria-label="Stop" title="Stop this thread" onClick={() => actions.stop(thread.id)}>
-            <Square size={12} fill="currentColor" />
-          </button>
-        )}
-        {column === 'resolved'
-          ? (
-            <button type="button" className="icon-button tiny" aria-label="Reopen" title="Reopen" onClick={() => actions.resolve(thread.id, false)}>
-              <RotateCcw size={12} />
+    </section>
+  )
+}
+
+function BoardRow({ thread, state, seen, tone, actions }: {
+  thread: ThreadRecord
+  state: ProjectState
+  seen: Readonly<Record<string, number>>
+  tone: WorkRowTone
+  actions: RowActions
+}) {
+  const mark = threadMark(state, thread)
+  const current = threadState(state, thread)
+  const column = boardColumn(state, thread, seen)
+  return (
+    <WorkRow
+      mark={mark.kind}
+      markLabel={mark.label}
+      progress={mark.progress}
+      title={thread.label}
+      line={threadActivity(state, thread)}
+      failed={current === 'failed'}
+      time={relativeTime(thread.updatedAt)}
+      tone={tone}
+      hint={thread.goal}
+      onOpen={() => actions.open(thread.id)}
+      actions={(
+        <>
+          {column === 'working' && (
+            <button type="button" className="icon-button round" aria-label={`Stop ${thread.label}`} title="Stop this thread" onClick={() => actions.stop(thread.id)}>
+              <Square size={12} fill="currentColor" />
             </button>
-          )
-          : column !== 'working' && (
-            <button type="button" className="icon-button tiny" aria-label="Resolve" title="Mark resolved: you took the result" onClick={() => actions.resolve(thread.id, true)}>
+          )}
+          {column === 'resolved' && (
+            <button type="button" className="icon-button round" aria-label={`Reopen ${thread.label}`} title="Reopen" onClick={() => actions.resolve(thread.id, false)}>
+              <RotateCcw size={14} />
+            </button>
+          )}
+          {column !== 'working' && column !== 'resolved' && (
+            <button type="button" className="icon-button round" aria-label={`Resolve ${thread.label}`} title="Mark resolved: you took the result" onClick={() => actions.resolve(thread.id, true)}>
               <CheckCheck size={14} />
             </button>
           )}
-      </span>
-    </div>
+        </>
+      )}
+    />
   )
 }
 
-/**
- * A thread's checklist as one segment per step: done steps filled, the step
- * it is on breathing, the rest empty. Long checklists fall back to one bar.
- */
-function Steps({ thread }: { thread: ThreadRecord }) {
-  const progress = checklistProgress(thread)
-  const items = thread.checklist ?? []
-  if (!progress) return null
-  const label = `${progress.done} of ${progress.total} steps done`
+/** "7 done today": one line that opens the finished threads, as flat rows grouped by day. */
+function DoneLine({ threads, state, seen, actions }: {
+  threads: ThreadRecord[]
+  state: ProjectState
+  seen: Readonly<Record<string, number>>
+  actions: RowActions
+}) {
+  const [open, setOpen] = useState(false)
+  if (threads.length === 0) return null
+  const today = startOfDay(Date.now())
+  const doneToday = threads.filter(thread => thread.updatedAt >= today).length
+  const days = new Map<number, ThreadRecord[]>()
+  for (const thread of threads) {
+    const day = startOfDay(thread.updatedAt)
+    days.set(day, [...(days.get(day) ?? []), thread])
+  }
   return (
-    <span className="board-progress" role="img" aria-label={label} title={label}>
-      {items.length <= MAX_SEGMENTS
-        ? (
-          <span className="board-steps" aria-hidden>
-            {items.map((item, index) => <span key={index} className={`board-step step-${item.status}`} title={item.title} />)}
-          </span>
-        )
-        : <span className="board-progress-bar" aria-hidden><span style={{ width: `${(progress.done / progress.total) * 100}%` }} /></span>}
-      <span className="board-progress-count" aria-hidden>{progress.done}/{progress.total}</span>
-    </span>
+    <section className={`board-done${open ? ' open' : ''}`} aria-label="Done">
+      <button type="button" className="board-done-line" onClick={() => setOpen(value => !value)} aria-expanded={open}>
+        <PenMark kind="done" size={16} />
+        <span>{doneToday > 0 ? `${doneToday} done today` : `${threads.length} done`}</span>
+        <ChevronRight size={14} className="chevron" aria-hidden />
+      </button>
+      {open && [...days.entries()].map(([day, list]) => (
+        <div key={day} className="board-day">
+          <h4 className="board-day-head">{dayLabel(day, today)}</h4>
+          <div className="board-rows">
+            {list.map(thread => <BoardRow key={thread.id} thread={thread} state={state} seen={seen} tone="flat" actions={actions} />)}
+          </div>
+        </div>
+      ))}
+    </section>
   )
 }
 
-const MAX_SEGMENTS = 12
-
-type CardOutput =
-  | { kind: 'artifact'; artifact: ArtifactFact; at: number }
-  | { kind: 'git'; resource: ResourceFact; at: number }
-
-/** What a thread made — outputs, pushes and pull requests — newest first. */
-function cardOutputs(state: ProjectState, threadId: string): CardOutput[] {
-  return [
-    ...threadArtifacts(state, threadId).map((artifact): CardOutput => ({ kind: 'artifact', artifact, at: artifact.createdAt })),
-    ...gitResources(state, threadId).map((resource): CardOutput => ({ kind: 'git', resource, at: resource.updatedAt })),
-  ].sort((a, b) => b.at - a.at)
-}
-
-/** A push or pull request as a chip; it opens on the web when there is a page. */
-function GitChip({ resource }: { resource: ResourceFact }) {
-  const git = resource.data.git
-  if (!git) return null
-  const pr = git.kind === 'pull-request'
-  // An opened pull request shows where it stands now: its icon and colour follow the state.
-  const live = pr && git.status === 'opened' ? git.state : undefined
-  const Icon = live ? PULL_REQUEST_ICON[live] : pr ? GitPullRequest : GitBranch
-  const name = pr && git.number !== undefined ? `PR #${git.number}` : git.branch ?? resource.data.title
-  const failed = git.status === 'rejected' || git.status === 'failed'
-  const body = <><Icon size={12} className={live ? `pr-mark pr-${live}` : undefined} aria-hidden /><span className="board-output-name">{name}</span></>
-  const className = `board-chip board-output${failed ? ' tone-danger' : ''}`
-  const title = `${resource.data.title}${live ? ` (${PULL_REQUEST_LABEL[live].toLowerCase()})` : ''}`
-  return /^https?:\/\//i.test(resource.data.uri)
-    ? <a className={className} href={resource.data.uri} target="_blank" rel="noreferrer noopener" title={`${title}: open in the browser`}>{body}</a>
-    : <span className={className} title={title}>{body}</span>
-}
-
-/** Usage refreshes when a thread starts or settles, not on every streamed token. */
-function useUsage(workspace: string, state: ProjectState): ProjectUsage | undefined {
-  const [usage, setUsage] = useState<ProjectUsage | undefined>()
-  const projectId = state.project.id
-  const key = Object.values(state.threads).map(thread => `${thread.id}:${thread.state}`).sort().join('|')
-  useEffect(() => {
-    let cancelled = false
-    const timer = setTimeout(() => {
-      projectApi.usage(workspace, projectId, startOfDay(Date.now())).then(
-        next => { if (!cancelled) setUsage(next) },
-        () => undefined,
-      )
-    }, 400)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [workspace, projectId, key])
-  return usage
+function dayLabel(day: number, today: number): string {
+  if (day === today) return 'Today'
+  if (today - day <= 86_400_000 + 3_600_000) return 'Yesterday'
+  return new Date(day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }

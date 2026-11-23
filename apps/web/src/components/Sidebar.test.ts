@@ -109,12 +109,14 @@ it('collapses Pinned, shows a few projects before "more", and archives or delete
   many[10] = { ...project('m10', 90), threads: { waiting: 1, failed: 0, working: 0 } }
   const { props, view } = renderSidebar({ projects: many })
 
-  // The first eight, plus one further down that waits on you.
+  // The one that waits on you rises into Your turn; Pinned shows the first eight of the rest.
+  const yours = view.getByRole('region', { name: 'Your turn' })
+  expect(yours.querySelectorAll('.project-item')).toHaveLength(1)
+  expect(yours.textContent).toContain('Project m10')
   const pinned = view.getByRole('region', { name: 'Pinned' })
-  expect(pinned.querySelectorAll('.project-item')).toHaveLength(9)
-  expect(view.getByText('Project m10')).toBeTruthy()
+  expect(pinned.querySelectorAll('.project-item')).toHaveLength(8)
   fireEvent.click(view.getByText('2 more'))
-  expect(pinned.querySelectorAll('.project-item')).toHaveLength(11)
+  expect(pinned.querySelectorAll('.project-item')).toHaveLength(10)
 
   fireEvent.click(view.getByRole('button', { name: 'Project m0 options' }))
   fireEvent.click(view.getByRole('menuitem', { name: /Delete/ }))
@@ -174,14 +176,61 @@ it('keeps showing a workspace\'s lists while the app loads them after a switch',
   expect(view.getByText('Session b1')).toBeTruthy()
 })
 
-it('puts New session and New project at the top, where you are', () => {
+it('starts with one New session pill; the + holds New project, Temporary chat and Open a folder', () => {
   vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
   vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
-  const { props, view } = renderSidebar({ workspaces: ['/a', '/scratch'], defaultWorkspace: '/scratch' })
-  fireEvent.click(view.getByRole('button', { name: 'New project' }))
+  const onTemporaryChat = vi.fn()
+  const { props, view } = renderSidebar({ workspaces: ['/a', '/scratch'], defaultWorkspace: '/scratch', onTemporaryChat })
+  expect(view.queryByRole('button', { name: 'New project' })).toBeNull()
+  fireEvent.click(view.getByRole('button', { name: 'More ways to start' }))
+  fireEvent.click(view.getByRole('menuitem', { name: /New project/ }))
   expect(props.onNewProject).toHaveBeenCalledWith('/a')
+  fireEvent.click(view.getByRole('button', { name: 'More ways to start' }))
+  fireEvent.click(view.getByRole('menuitem', { name: /Temporary chat/ }))
+  expect(onTemporaryChat).toHaveBeenCalled()
+  fireEvent.click(view.getByRole('button', { name: 'More ways to start' }))
+  fireEvent.click(view.getByRole('menuitem', { name: /Open a folder/ }))
+  expect(props.onAddWorkspace).toHaveBeenCalled()
   fireEvent.click(view.getByRole('button', { name: 'New session' }))
   expect(props.onNewSession).toHaveBeenCalledWith('/scratch')
+})
+
+it('puts sessions that wait on you first, in Your turn, with how long they have waited', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const now = Date.now()
+  const { props, view } = renderSidebar({ sessions: [
+    { ...session('ask', '/a', now - 2 * 3_600_000), waiting: true },
+    session('rest', '/a', now),
+  ] })
+  const yours = view.getByRole('region', { name: 'Your turn' })
+  const list = view.container.querySelector('.session-list')!
+  expect(list.firstElementChild).toBe(yours)
+  expect(yours.textContent).toContain('Session ask')
+  expect(yours.querySelector('.session-waited')?.textContent).toBe('2h')
+  // It moves out of its folder's group: one row per session.
+  expect(view.getAllByText('Session ask')).toHaveLength(1)
+  fireEvent.click(view.getByText('Session ask'))
+  expect(props.onSelectSession).toHaveBeenCalledWith('/a', 'ask')
+})
+
+it('has no Your turn group when nothing waits on you', () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const { view } = renderSidebar()
+  expect(view.queryByRole('region', { name: 'Your turn' })).toBeNull()
+})
+
+it('switches between light and dark in the footer; System is left to Settings', () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  const { props, view } = renderSidebar({ theme: 'dark' })
+  const group = view.getByRole('radiogroup', { name: 'Theme' })
+  expect(group.querySelectorAll('[role="radio"]')).toHaveLength(2)
+  expect(view.getByRole('radio', { name: 'Dark' }).getAttribute('aria-checked')).toBe('true')
+  fireEvent.click(view.getByRole('radio', { name: 'Light' }))
+  expect(props.onThemeChange).toHaveBeenCalledWith('light')
+  expect(view.queryByRole('radio', { name: 'System' })).toBeNull()
 })
 
 it('finds sessions by what was said in them and shows the matching line', async () => {
@@ -205,6 +254,20 @@ it('finds sessions by what was said in them and shows the matching line', async 
   fireEvent.change(view.getByRole('textbox', { name: 'Search sessions and projects' }), { target: { value: 'zzz' } })
   search.mockResolvedValue({ hits: [] })
   await waitFor(() => expect(view.getByText('Nothing matches “zzz”.')).toBeTruthy())
+})
+
+it('still finds a waiting session by message content and shows its matching line in Your turn', async () => {
+  vi.spyOn(api, 'sessions').mockResolvedValue({ sessions: [] })
+  vi.spyOn(projectApi, 'list').mockResolvedValue({ projects: [] })
+  vi.spyOn(api, 'searchSessions').mockImplementation(async path =>
+    ({ hits: path === '/a' ? [{ id: 'ask', snippet: '…approve deploy key…' }] : [] }))
+  const { view } = renderSidebar({ sessions: [{ ...session('ask', '/a', 10), waiting: true }] })
+
+  fireEvent.change(view.getByRole('textbox', { name: 'Search sessions and projects' }), { target: { value: 'deploy' } })
+  await waitFor(() => expect(view.getByText('deploy')).toBeTruthy())
+  const yours = view.getByRole('region', { name: 'Your turn' })
+  expect(yours.textContent).toContain('Session ask')
+  expect(yours.querySelector('.session-snippet')?.textContent).toBe('…approve deploy key…')
 })
 
 it('selects several sessions, across workspaces, and deletes them together', async () => {

@@ -1,0 +1,80 @@
+# Foundations
+
+Values are given as the token first, then the Umbrella light value, then the dark value. Components use tokens only.
+
+## Colour tiers
+
+Umbrella has five surface tiers. Every container must be exactly one tier, chosen by what it is, never by what looks nice next to its neighbour.
+
+| Tier | Token | Light | Dark | What sits on it |
+| --- | --- | --- | --- | --- |
+| Ground | `--bg-sidebar` | `#ececec` | `#151516` | The window. The sidebar sits on it directly. Holds no content cards. |
+| Panel | `--bg` | `#f7f7f7` | `#1b1b1d` | The conversation, the Workbench frame, reading surfaces in the Workbench. Radius 22. |
+| Card | `--surface` | `#ffffff` | `#242426` | Results, work rows, settings sections, the open sidebar row. Radius 14–16. |
+| Raised | `--surface-raised` | `#ffffff` | `#2b2b2d` | The composer, menus, dialogs, the selected tab, anything waiting on you. |
+| Sunken | `--surface-sunken` | `#e8e8e8` | `#131314` | Fields, code, secondary buttons, unselected options, chips. |
+
+Rules:
+
+- **A child is always a different tier from its parent.** Card on panel, sunken inside card, raised on panel. Two neighbours on the same tier are separated by space, never by a line.
+- **Hover** is `--surface-hover` (5% ink) and **pressed** is `--surface-active` (8.5% ink), laid over whatever tier the element is.
+- **Selected** is `--accent-soft` (`#e0e0e0`) for rows and options. Where a selected item must be compared with its neighbours (palette cards, question options), it also gets a 1.5 px inset ink ring (`box-shadow: inset 0 0 0 1.5px var(--accent)`), never an outline.
+
+## Ink
+
+| Token | Light | Use |
+| --- | --- | --- |
+| `--text` | `#0e0e0e` | Reading text, titles, the one thing that needs you |
+| `--text-2` | `#3a3a3c` | Secondary lines (what a thread is doing, descriptions) |
+| `--text-3` | `#545457` | Meta: times, counts, hints. Still ≥ 4.5:1 on every tier |
+| `--accent` | `#0e0e0e` | Ink fills: primary buttons, your message, the send button, switches when on |
+| `--text-inverse` | `#f7f7f7` | Text on ink |
+| `--danger` | `#a62b25` | The only colour that is not grey: failure marks, delete confirmations, field errors |
+
+There is no warning yellow, success green or accent blue in Umbrella's chrome. Success is a tick, waiting on you is the loop, both in ink. `--success`, `--warn` and the soft variants stay as tokens only for diffs, syntax and charts.
+
+Contrast floors are enforced by `apps/web/src/styles/contrast.test.ts`: body text ≥ 7:1 on its surface, every text role ≥ 4.5:1 on every tier.
+
+## Type
+
+Geist for UI, Noto Sans SC for Chinese, JetBrains Mono for code. There is no serif. Display text is Geist 700 with −0.025em tracking (`--display-weight`, `--display-tracking`).
+
+| Token | Size | Line | Use |
+| --- | --- | --- | --- |
+| `--text-xs` | 11.5 | 16 | Kickers, counts in chips |
+| `--text-sm` | 12.5 | 18 | Meta, help text, times |
+| `--text-md` | 13.5 | 20 | Controls, sidebar rows, menus |
+| `--text-lg` | 15 | 24 | **Reading text**: messages, answers, asks |
+| `--text-xl` | 19 | 26 | Panel titles (Work, Settings) |
+| `--text-2xl` | 26 | 32 | Dialog and page titles |
+| `--text-3xl` | 34 | 40 | The welcome greeting |
+
+Weights: 400 body, 500 controls, 600 titles and the thing that needs you, 700 display. Nothing in all caps except a kicker (11.5, 700, +0.09em), and kickers appear only in design docs, not in the app.
+
+## Spacing
+
+A 4 px grid. The values that recur:
+
+- **10**: the gap between the ground and a floating panel (`--panel-gap`), on every side.
+- **6**: the inset inside the Workbench frame, so the cards inside are concentric (22 − 6 = 16).
+- **12 / 16**: the gap between parts of a turn / between turns.
+- **28**: the conversation's side padding at full width.
+- **680**: the conversation column (`--reading-width`).
+
+## Radii
+
+`--radius-xs` 4 · `--radius-sm` 6 · `--radius-md` 10 · `--radius-lg` 14 · `--radius-xl` 16 · `--radius-2xl` 22 · `--radius-full`.
+
+Nested radii are concentric: inner = outer − inset. Panels 22, cards 16 (14 for rows), fields 14, small rows and menu items 10, buttons and chips full, dialogs 28 (`--radius-2xl` + 6).
+
+## Elevation
+
+`--shadow-sm` is `none`. Nothing on the page has a shadow. `--shadow-md` is only for menus, popovers and tooltips. `--shadow-lg` is only for dialogs and sheets.
+
+## Focus
+
+One ring everywhere: 2 px `--border-focus` (ink), offset 2, following the element's radius. No glow, no colour change instead of the ring. Fields get the ring on `:focus-visible` and also on `:focus` (typing needs to show where).
+
+## Motion
+
+`--duration-fast` 120 ms for hover and press, `--duration-med` 200 ms for fades, `--duration-panel` for panel folds, `--pen-draw` 380 ms for a mark drawing itself. Pressed buttons scale to 0.98. Everything respects `prefers-reduced-motion`: marks just appear and panels jump.

@@ -1,5 +1,5 @@
-import { ArrowUp, AtSign, FileText, ImagePlus, Paperclip, Slash, Sparkles, SquareMousePointer, Square, X } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ArrowUp, AtSign, ClipboardPaste, FileText, ImagePlus, Paperclip, Plus, Slash, SquareMousePointer, Square, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { attachedFileLine, droppedFiles, MAX_FILES_PER_MESSAGE, sortDropped } from '../lib/attached-files'
 import { imageFromFile, imageSrc, MAX_IMAGES_PER_MESSAGE } from '../lib/attachments'
 import { COMPOSER_INSERT, type ComposerContext, type ComposerInsert } from '../lib/browser-live'
@@ -7,6 +7,8 @@ import { applyCompletion, detectTrigger, rankCommands, type CommandSpec, type Tr
 import { errorText } from '../lib/hooks'
 import { continueList, indentList, markdownTokens, type InputEdit } from '../lib/markdown-input'
 import type { ImageAttachment } from '../lib/types'
+import { Menu } from './Menu'
+import { PenMark } from './PenMark'
 
 /** One argument suggestion for a command, e.g. a model id or a skill name. */
 export interface ArgumentSuggestion {
@@ -121,6 +123,7 @@ export function PromptBox({
   const [reading, setReading] = useState(0)
   const [dragging, setDragging] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
+  const filePicker = useRef<HTMLInputElement>(null)
   const [caret, setCaret] = useState(0)
   const [active, setActive] = useState(0)
   const [dismissed, setDismissed] = useState('')
@@ -130,9 +133,11 @@ export function PromptBox({
   const menu = useRef<HTMLDivElement>(null)
   const pendingCaret = useRef<number | undefined>(undefined)
   const showStop = running && Boolean(onStop)
-  const singleControl = inline && allowWhileRunning && Boolean(onStop)
+  // One round button: stop while the agent works and the box is empty, send once you type.
+  const singleControl = allowWhileRunning && Boolean(onStop)
   const hasContent = Boolean(text.trim() || images.length || contexts.length || files.length)
   const acceptsFiles = acceptImages || Boolean(attachFile)
+  const canReadClipboard = typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function'
 
   const maxHeight = compact || inline ? 180 : 280
   /**
@@ -399,6 +404,30 @@ export function PromptBox({
     }
   }
 
+  const pick = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    addFiles(picked)
+  }
+
+  /** Attach what is on the clipboard: files and images go in as attachments, plain text at the end. */
+  const pasteClipboard = async () => {
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+    if (!clipboard || typeof clipboard.read !== 'function') return
+    try {
+      const entries = await clipboard.read()
+      const blobs = await Promise.all(entries.flatMap(entry => entry.types
+        .filter(type => !type.startsWith('text/'))
+        .map(async type => new File([await entry.getType(type)], `pasted.${type.split('/')[1] ?? 'bin'}`, { type }))))
+      if (blobs.length && addFiles(blobs)) return
+      const pasted = await clipboard.readText()
+      if (pasted) setText(current => current ? `${current}${current.endsWith('\n') ? '' : '\n'}${pasted}` : pasted)
+      input.current?.focus()
+    } catch {
+      // Clipboard access was refused; the shortcut still works.
+    }
+  }
+
   const items = completion?.items ?? []
   const open = Boolean(completion)
 
@@ -483,7 +512,7 @@ export function PromptBox({
               >
                 {file.path || file.error
                   ? <FileText size={12} aria-hidden />
-                  : <span className="spinner tiny" role="status" aria-label={`Attaching ${file.name}`} />}
+                  : <span className="composer-file-mark" role="status" aria-label={`Attaching ${file.name}`}><PenMark kind="working" size={12} /></span>}
                 <span className="composer-context-label">{file.error ? `${file.name} · not attached` : file.name}</span>
                 <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setFiles(current => current.filter(each => each.key !== file.key))}>
                   <X size={12} strokeWidth={2.6} />
@@ -494,19 +523,44 @@ export function PromptBox({
             {imageNotice && images.length > 0 && <span className="composer-attachment-note">{imageNotice}</span>}
           </div>
         )}
-        <div className="composer-input">
-        <div className="composer-highlight" ref={highlight} aria-hidden>
-          {tokens.map((token, index) => token.kind
-            ? <span key={index} className={`md-${token.kind}`}>{token.text}</span>
-            : token.text)}
-          {/* A trailing newline needs a character after it to take up its line. */}
-          {text.endsWith('\n') ? ' ' : null}
-        </div>
+        <div className="composer-row">
+          {acceptsFiles && (
+            <div className="composer-lead" onClick={event => event.stopPropagation()}>
+              <Menu
+                label={attachFile ? 'Attach files' : 'Attach images'}
+                className="composer-attach"
+                side="top"
+                trigger={<Plus size={18} strokeWidth={2} />}
+                items={[
+                  ...(attachFile ? [{ key: 'files', label: 'Files', icon: <Paperclip size={15} />, disabled: files.length >= MAX_FILES_PER_MESSAGE, onSelect: () => filePicker.current?.click() }] : []),
+                  ...(acceptImages ? [{ key: 'images', label: 'Images', icon: <ImagePlus size={15} />, disabled: images.length >= MAX_IMAGES_PER_MESSAGE, onSelect: () => picker.current?.click() }] : []),
+                  { key: 'paste', label: 'Paste from clipboard', icon: <ClipboardPaste size={15} />, disabled: !canReadClipboard, onSelect: () => void pasteClipboard() },
+                ]}
+              />
+              <input
+                ref={picker}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                hidden
+                onChange={pick}
+              />
+              {attachFile && <input ref={filePicker} type="file" multiple hidden onChange={pick} />}
+            </div>
+          )}
+          <div className="composer-input">
+            <div className="composer-highlight" ref={highlight} aria-hidden>
+              {tokens.map((token, index) => token.kind
+                ? <span key={index} className={`md-${token.kind}`}>{token.text}</span>
+                : token.text)}
+              {/* A trailing newline needs a character after it to take up its line. */}
+              {text.endsWith('\n') ? ' ' : null}
+            </div>
         <textarea
           ref={input}
           value={text}
           rows={1}
-          placeholder={placeholder}
+          placeholder={dragging ? 'Drop to attach' : placeholder}
           aria-label="Message"
           aria-autocomplete="list"
           aria-expanded={open}
@@ -574,37 +628,10 @@ export function PromptBox({
             }
           }}
         />
-        </div>
-        <div className="composer-toolbar" onClick={event => event.stopPropagation()}>
-          <div className="composer-controls">
-            {acceptsFiles && (
-              <>
-                <button
-                  type="button"
-                  className="composer-attach"
-                  aria-label={attachFile ? 'Attach files' : 'Attach images'}
-                  title={attachFile ? 'Attach files or images (or paste / drop them)' : 'Attach images (or paste / drop them)'}
-                  disabled={attachFile ? files.length >= MAX_FILES_PER_MESSAGE && images.length >= MAX_IMAGES_PER_MESSAGE : images.length >= MAX_IMAGES_PER_MESSAGE}
-                  onClick={() => picker.current?.click()}
-                >
-                  {attachFile ? <Paperclip size={14} /> : <ImagePlus size={14} />}
-                </button>
-                <input
-                  ref={picker}
-                  type="file"
-                  {...(attachFile ? {} : { accept: 'image/png,image/jpeg,image/webp,image/gif' })}
-                  multiple
-                  hidden
-                  onChange={event => {
-                    const picked = Array.from(event.target.files ?? [])
-                    event.target.value = ''
-                    addFiles(picked)
-                  }}
-                />
-              </>
-            )}
+          </div>
+          <div className="composer-trail" onClick={event => event.stopPropagation()}>
             {toolbar}
-            {!singleControl && running && allowWhileRunning && onInterruptSubmit && (
+            {!inline && running && allowWhileRunning && onInterruptSubmit && (
               <button
                 type="button"
                 className="button ghost small"
@@ -615,31 +642,32 @@ export function PromptBox({
                 Interrupt and send
               </button>
             )}
+            {running && hasContent && onSteerSubmit && <span className="composer-hint">Enter queues it</span>}
+            {(singleControl ? running && !hasContent : showStop) && (
+              <button type="button" className="send-button stop" onClick={onStop} aria-label="Stop" title="Stop (Esc)">
+                <Square size={12} fill="currentColor" strokeWidth={0} />
+              </button>
+            )}
+            {(singleControl ? hasContent || !running : !showStop) && (
+              <button
+                type="button"
+                className="send-button"
+                onClick={() => void submit()}
+                disabled={!canSend || Boolean(disabledReason)}
+                aria-label="Send"
+                title={running && onInterruptSubmit
+                  ? 'Send (Enter); interrupt and send (Ctrl+Enter)'
+                  : running && onSteerSubmit ? 'Queue for after this run (Enter); steer now (Ctrl+Enter)' : 'Send (Enter)'}
+              >
+                <ArrowUp size={18} strokeWidth={2.2} />
+              </button>
+            )}
           </div>
-          {(singleControl ? running && !hasContent : showStop) && (
-            <button type="button" className="send-button stop" onClick={onStop} aria-label="Stop" title="Stop (Esc)">
-              <Square size={12} fill="currentColor" />
-            </button>
-          )}
-          {(singleControl ? hasContent || !running : !showStop || allowWhileRunning) && (
-            <button
-              type="button"
-              className="send-button"
-              onClick={() => void submit()}
-              disabled={!canSend || Boolean(disabledReason)}
-              aria-label="Send"
-              title={singleControl && running && onInterruptSubmit
-                ? 'Send (Enter); interrupt and send (Ctrl+Enter)'
-                : running && onSteerSubmit ? 'Queue for after this run (Enter); steer now (Ctrl+Enter)' : 'Send (Enter)'}
-            >
-              <ArrowUp size={14} strokeWidth={2.4} />
-            </button>
-          )}
         </div>
       </div>
       {!compact && !inline && (disabledReason || footer) && (
         <div className="composer-footer">
-          {disabledReason ? <span className="composer-warning"><Sparkles size={12} />{disabledReason}</span> : footer}
+          {disabledReason ? <span className="composer-warning">{disabledReason}</span> : footer}
         </div>
       )}
     </div>
