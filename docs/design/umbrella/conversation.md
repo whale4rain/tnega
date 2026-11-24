@@ -5,7 +5,7 @@ Everything in a turn hangs from one left edge, reads at 15 on 24, and is boxed o
 ## Header (52)
 
 - Left: the title in 15/600, then the folder as a sunken chip (12.5, pill, padding 3 10).
-- Right: **mode** and **access** as words with a caret ("Coding ⌄", "Read only ⌄"), because they are choices, not tools. Then the **Work** pill: ink, "Work · N", led by the mark of the busiest state inside (`you` if anything waits on you, else `working`, else none). It toggles the Workbench and replaces the panel icon. Then one round **…** holding everything else (plan, settings for this session, context, export).
+- Right: **mode** and **access** as words with a caret ("Coding ⌄", "Read only ⌄"), because they are choices, not tools. Then the **Workbench** pill: the side-panel icon and the word "Workbench" (a bare "Work" did not say that it opens a panel), then "· N" files changed in `--text-3`, then the mark of the busiest state inside (`you` if anything waits on you, else `working`, else none). Sunken while the panel is closed, ink while it is open (`aria-pressed`). It toggles the Workbench. Then one round **…** holding everything else (plan, settings for this session, context, export).
 - No row of bare icons whose meaning you have to hover to learn.
 
 ## Agent turn

@@ -1909,27 +1909,42 @@ input[type="radio"]:focus-visible {
   align-items: center;
   gap: 6px;
   height: var(--control-lg);
-  padding: 0 14px;
+  padding: 0 12px 0 10px;
   border-radius: var(--radius-full);
-  background: var(--accent);
-  color: var(--text-inverse);
+  background: var(--surface-sunken);
+  color: var(--text);
   font-size: var(--text-md);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  transition: background var(--duration-fast), transform var(--duration-fast);
+  transition: background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
 }
 
-.work-pill:has(.pen-mark) {
-  padding-left: 9px;
-}
-
-.work-pill .pen-mark {
-  color: var(--text-inverse);
+.work-pill-count {
+  color: var(--text-3);
+  font-weight: 500;
 }
 
 .work-pill:hover {
+  background: var(--surface-active);
+}
+
+/* Open: the panel is showing, so the pill is pressed in ink. */
+.work-pill.is-open {
+  background: var(--accent);
+  color: var(--text-inverse);
+}
+
+.work-pill.is-open .work-pill-count {
+  color: inherit;
+}
+
+.work-pill.is-open:hover {
   background: var(--accent-hover);
+}
+
+.work-pill.is-open .pen-mark {
+  color: var(--text-inverse);
 }
 
 .work-pill:active {

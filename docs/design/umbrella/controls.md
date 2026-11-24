@@ -34,7 +34,7 @@ Every control has one shape and no outline. Pills for things you press, sunken f
 ## Chips and counts
 
 - A chip is a sunken pill, 12.5–13.5 text, padding 3 10. Chips are labels or filters, never status.
-- Counts sit next to their label in `--text-3`, never inside a coloured bubble. The only round count is on the Work pill's mark.
+- Counts sit next to their label in `--text-3`, never inside a coloured bubble. The Workbench pill shows its count the same way, after a middle dot.
 
 ## Menus and popovers
 
