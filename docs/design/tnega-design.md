@@ -36,13 +36,13 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。2026-11-22 起�
 
 ## 2. 标识：切片云
 
-- 品牌标志是一朵**瑞士几何切片云**（2026-11-23 起）：不对称双穹平底积云轮廓，被等距水平负空间切分成 6 道（≥32px，欢迎页与安装包图标）或 5 道加粗（<32px，侧栏、对话头像与 favicon）墨色横条。无卡通五官、无描边、无渐变，在 16px 到 1024px 都清晰克制。
+- 品牌标志是一朵**瑞士几何切片云**（2026-11-23 起）：不对称双穹平底积云轮廓，被一道水平负空间横切成两段墨色（2026-11-24 起：上段是较高的穹顶，下段是一条平带；切口在 64 视框的 y=33.2、高 4，`BRAND_CLOUD_CUTS`）。所有尺寸用同一刀：此前的 6 道 / 5 道细切口在 24px 以下糊成一团。无卡通五官、无描边、无渐变，在 16px 到 1024px 都清晰克制。
 - **载板**：侧栏与对话主 Agent 头像直接以裸形墨色切片云落面；欢迎页（64px）与桌面端安装包图标（`apps/desktop/build/icon.svg`）放在一枚浅色圆角方片上（`--surface-raised` / `#f3f3f1` 配极淡描边）。
 - 任务栏角标（`apps/desktop/build/completion-*.png`，由 `scripts/render-completion-icons.mjs` 生成）只画天气本身——雨滴、闪电、雪花，放在小深色圆片上——任务栏上始终只有一朵云。桌面通知不闪烁任务栏按钮（Windows 把它画成橙红色，像警报），提示音是应用自己合成的两声轻音，不用系统提示音。
 - 来源：
   - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-cloud`（云形遮罩）与 `--brand-cloud-cuts`（水平切片遮罩），用当前调色板的 `--accent` 填色（Umbrella 调色板里就是墨色），水平切片以 `mask-composite: exclude` 镂空，露出背后的底色，在任何调色板和明暗下都成立。
   - 欢迎页与头像共享路径：`apps/web/src/lib/avatar.ts` 的 `BRAND_CLOUD`、`BRAND_CLOUD_CUTS_LARGE` 与 `BRAND_CLOUD_CUTS_SMALL`。欢迎页（`Welcome.tsx`）的云轻轻漂浮，`prefers-reduced-motion` 下静止。改标志时与 CSS 遮罩一起改。
-  - favicon：`apps/web/index.html`；安装包图标：`apps/desktop/build/icon.svg`，浅灰圆角方片上的 6 条墨色切片云，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
+  - favicon：`apps/web/index.html`；安装包图标：`apps/desktop/build/icon.svg`，浅灰圆角方片上横切一刀的墨色云，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
 - 会话主 Agent 画成切片云（`AgentAvatar` 的 `brand`）；会话里的子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于区分。
 - **Project 里不画 Agent 头像**（2026-10-09 起）：Project 是任务驱动的，协调者只负责转派，Thread 用标题和手绘状态记号辨认（§3.9、§5.7）。
 
@@ -285,7 +285,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **密钥问题**（2026-10-26 起）：Agent 用 `ask_user_question` 的 `secret`（环境变量名，如 `GITHUB_TOKEN`）要密钥时，问题卡里是一行**隐藏输入**（复用 `.input-with-icon`：`KeyRound` 图标 · `password` 输入框，等宽字体 · 显示 / 隐藏的 `.icon-button.tiny`，`aria-pressed`），没有选项与补充文本框。下面一行 `.muted.small` 写去向（“只在这个会话里使用……命令里用 `$NAME` 读取”），右侧是 **记住** 按钮（`.button.ghost.small`，`aria-pressed`，按下时 `--accent-soft` 底、`--accent-text` 字）：按下则保存到这个工作区（重启后同一工作区的会话都能用），说明文字随之改写。值只交给宿主的密钥库，不进 Session、不回到时间线；Agent 只知道名字。设置里的 **Secrets** 分区（§9）列出名字并可移除。
 
 - **新会话的欢迎**（2026-11-12 起，`components/Welcome.tsx`；**字要少**，只有云、一句问候、输入框和一排起手式）：会话还没有消息时，`.conversation` 加 `is-welcome`，**问候与输入框在页面中间相遇**；第一条消息发出后回到“时间线在上、输入区在下”。从上到下：
-  - **切片云标志**（`Welcome.tsx`）：64px 浅色圆角方片（`--surface-raised` + `--border`）上居中的 6 条墨色切片云，缓慢浮动；欢迎页不画天气。`prefers-reduced-motion` 下静止且所有欢迎元素立显。首次打开的欢迎页（没有工作区时）用同一枚标志。
+  - **切片云标志**（`Welcome.tsx`）：64px 浅色圆角方片（`--surface-raised` + `--border`）上居中横切一刀的墨色云，缓慢浮动；欢迎页不画天气。`prefers-reduced-motion` 下静止且所有欢迎元素立显。首次打开的欢迎页（没有工作区时）用同一枚标志。
   - **一句问候**：`--font-display`、`--text-3xl`、400 字重，两段：按时间的问好用 `--text`，按 Agent 类型的问句用 `--text-3`（coding “What are we building?”，work “What can I take off your plate?”，general “What’s on your mind?”；`lib/welcome.ts`）。不再写“Working in … as …”——工作区已在标题栏。
   - 输入框，下面一排居中的**描边 `.chip`**（图标 + 标题，`--control` 高），完整提示词只在 `title` 里；点一下就发出。
   - **Pick up where you left off**：这个文件夹里最近更新的 3 个会话（`WelcomeRecent`），起手式下方。不套卡片：一行 `--text-3` `--text-sm` 小标签，下面是普通行（`History` 图标 · 标题 `--text-2` · 右侧 `--text-3` 相对时间），悬停 `--surface-hover`，点开该会话。没有会话就整段不显示；窗口矮（≤640px）时也不显示。

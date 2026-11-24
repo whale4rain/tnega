@@ -1,5 +1,5 @@
 import { createContext, memo, useContext, useId, useMemo, useSyncExternalStore } from 'react'
-import { ACCENT, BRAND_CLOUD, BRAND_CLOUD_CUTS_LARGE, BRAND_CLOUD_CUTS_SMALL, avatarSalt, avatarSpec, effectiveSeed, rerollAvatar, subscribeAvatars, type AvatarSpec, type Shape } from '../lib/avatar'
+import { ACCENT, BRAND_CLOUD, BRAND_CLOUD_CUTS, avatarSalt, avatarSpec, effectiveSeed, rerollAvatar, subscribeAvatars, type AvatarSpec, type Shape } from '../lib/avatar'
 import { WEATHER_LABEL, type Weather } from '../lib/weather'
 import { WeatherBack, WeatherFront } from './WeatherLayer'
 
@@ -65,7 +65,7 @@ function AvatarSvg({ spec, size, live, title, weather }: { spec: AvatarSpec; siz
   const fill = spec.color === ACCENT ? 'var(--accent)' : spec.color === 'ink' ? 'var(--avatar-ink)' : spec.color
   const mood = expression(weather)
   const character = spec.shape === 'brand'
-    ? <BrandCloudCharacter fill={fill} size={size} />
+    ? <BrandCloudCharacter fill={fill} />
     : <ShapeCharacter spec={spec} fill={fill} mood={mood} />
   return (
     <svg
@@ -153,13 +153,12 @@ function ShapeCharacter({ spec, fill, mood }: { spec: AvatarSpec; fill: string; 
 }
 
 /**
- * The main agent: the Swiss geometric sliced brand cloud in ink, without a disc
- * or cartoon eyes. Below 32px it uses 5 bolder bars so the horizontal slices
- * stay crisp at avatar sizes.
+ * The main agent: the Swiss geometric brand cloud in ink, cut once across, without a
+ * disc or cartoon eyes. The same cut at every size.
  */
-function BrandCloudCharacter({ fill, size }: { fill: string; size: number }) {
+function BrandCloudCharacter({ fill }: { fill: string }) {
   const mask = `av-brand-${useId().replace(/:/g, '')}`
-  const cuts = size < 32 ? BRAND_CLOUD_CUTS_SMALL : BRAND_CLOUD_CUTS_LARGE
+  const cuts = BRAND_CLOUD_CUTS
   return (
     <g className="av-body" style={{ fill }}>
       <defs>

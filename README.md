@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/tnega-icon.png" alt="Tnega: a geometric sliced cloud" width="112" />
+  <img src="docs/assets/tnega-icon.png" alt="Tnega: a geometric cloud cut once across" width="112" />
 </p>
 
 <h1 align="center">Tnega</h1>
@@ -80,8 +80,8 @@ from their durable logs.
 
 ![A project conversation beside its Board, with a pull request card and Threads](docs/assets/projects.png)
 
-Tnega uses the **Umbrella** design language: flat tonal surfaces without outer
-borders or shadows, floating rounded panels, and hand-drawn pen marks for
+Tnega uses the **Umbrella** design language: tonal surfaces without outer
+borders, floating rounded panels with a soft elevation, and hand-drawn pen marks for
 status, plans and asks. Light, dark and system themes come in six palettes:
 **Umbrella** (default), Carbon, Sky, Sand, Forest and Graphite. Density, text
 size and reading width are adjustable, and a small weather language shows what
