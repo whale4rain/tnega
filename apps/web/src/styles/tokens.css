@@ -21,11 +21,13 @@
   --display-weight: 700;
   --display-tracking: -0.025em;
 
-  --text-xs: 11.5px;
-  --text-sm: 12.5px;
-  --text-md: 13.5px;
-  --text-lg: 15px;
-  --text-xl: 19px;
+  /* 2026-11-24: one step up from 11.5 / 12.5 / 13.5 / 15. Next to 34–48 px controls, 13.5 px chrome
+     text read as small type in big boxes on a real desk (umbrella/foundations.md, Type). */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14.5px;
+  --text-lg: 16px;
+  --text-xl: 20px;
   --text-2xl: 26px;
   /* The new-session greeting only: a few words of welcome, in the display font. */
   --text-3xl: 34px;
@@ -68,22 +70,23 @@
   --control-sm: 22px;
   --row-h: 26px;
   /* Umbrella controls (docs/design/umbrella/controls.md): pill buttons, sunken fields, switches. */
-  --button-h: 38px;
-  --button-h-sm: 32px;
-  --button-h-lg: 44px;
-  --field-h: 40px;
-  --nav-pill-h: 34px;
+  /* 2026-11-24: controls are sized to the text they hold, about 2.3x its size, not to a touch target. */
+  --button-h: 34px;
+  --button-h-sm: 30px;
+  --button-h-lg: 40px;
+  --field-h: 36px;
+  --nav-pill-h: 32px;
   /* The Workbench tab row (umbrella/work.md). */
-  --tabs-h: 40px;
-  --menu-item-h: 36px;
-  /* The composer pill (umbrella/composer.md): 52 tall at rest, round 40 buttons inside a 6 inset, so 26 = 20 + 6. */
-  --composer-h: 52px;
-  --composer-button: 40px;
-  --radius-composer: 26px;
+  --tabs-h: 38px;
+  --menu-item-h: 34px;
+  /* The composer pill (umbrella/composer.md): 48 tall at rest, round 36 buttons inside a 6 inset, so 24 = 18 + 6. */
+  --composer-h: 48px;
+  --composer-button: 36px;
+  --radius-composer: 24px;
   --icon: 14px;
   --icon-sm: 12px;
   /* The sidebar is read at a glance, so its rows and icons are a size up from the rest of the chrome. */
-  --nav-row-h: 36px;
+  --nav-row-h: 34px;
   --nav-icon: 16px;
 
   --sidebar-width: 264px;
@@ -754,25 +757,26 @@
   --control-sm: 26px;
   --row-h: 32px;
   --icon: 15px;
-  --nav-row-h: 40px;
+  --nav-row-h: 38px;
   --nav-icon: 17px;
 }
 
 [data-text-size="small"] {
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-lg: 14px;
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-md: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 19px;
   --text-3xl: 32px;
 }
 
 [data-text-size="large"] {
-  --text-xs: 12.5px;
-  --text-sm: 13.5px;
-  --text-md: 15px;
-  --text-lg: 16.5px;
-  --text-xl: 21px;
-  --text-2xl: 28.5px;
+  --text-xs: 13px;
+  --text-sm: 14px;
+  --text-md: 15.5px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+  --text-2xl: 29px;
   --text-3xl: 37px;
 }
 

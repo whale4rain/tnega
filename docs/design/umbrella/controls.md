@@ -11,14 +11,14 @@ Every control has one shape and no outline. Pills for things you press, sunken f
 | Plain | none | `--text` | A way out (Cancel, Skip, Deny) |
 | Danger | `--danger` | white | Only inside a delete confirmation |
 
-- Shape: pill. Height 38 (`.button`), 32 small, 44 large and on touch. Padding 0 18. Text 14/600.
-- Icon-only buttons are round (38, 32 small) and always have an `aria-label`.
+- Shape: pill. Height 34 (`.button`), 30 small, 40 large; 44 on touch. Padding 0 18. Text 14/600.
+- Icon-only buttons are round (34, 30 small) and always have an `aria-label`.
 - Hover: one tone darker. Pressed: `--surface-active` and `scale(0.98)`. Disabled: 40% opacity, no hover.
 - Focus: the ink ring (2 px, offset 2).
 
 ## Fields
 
-- Text inputs, selects and text areas: `--surface-sunken`, radius 14, height 40, padding 0 14, 14 text, **no border**.
+- Text inputs, selects and text areas: `--surface-sunken`, radius 14, height 36, padding 0 14, 14.5 text, **no border**.
 - Label above (13/600), help below (12.5 `--text-3`). An error replaces the help with what to do, in `--danger`; the field itself gets no red border.
 - Selects and one-line pickers are pills with a chevron.
 - Search fields are white pills with a magnifier when they sit on the ground or a sunken tier, sunken pills when they sit on a card.
@@ -39,7 +39,7 @@ Every control has one shape and no outline. Pills for things you press, sunken f
 ## Menus and popovers
 
 - White (`--surface-raised`), radius 16, `--shadow-md` (its hairline ring is part of the shadow), 6 inset.
-- Items 36 tall, radius 10, 14 text, an optional 15 lucide icon. The current item gets the `done` tick. Hover is `--surface-hover`.
+- Items 34 tall, radius 10, 14.5 text, an optional 15 lucide icon. The current item gets the `done` tick. Hover is `--surface-hover`.
 - Destructive items sit last after one separator, in `--danger`.
 - Keyboard: arrows move, Enter picks, Esc closes and returns focus.
 

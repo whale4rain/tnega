@@ -1103,13 +1103,13 @@ input[type="radio"]:focus-visible {
   transition: visibility 0s linear var(--duration-panel);
 }
 
-/* The brand row (umbrella/sidebar.md): 48px in compact, level with the conversation header. */
+/* The brand row (umbrella/sidebar.md): 44px in compact, level with the conversation header. */
 .sidebar-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex: none;
-  height: calc(var(--control-lg) + 16px);
+  height: calc(var(--control-lg) + 12px);
   padding: 0 2px 0 6px;
 }
 
@@ -1706,7 +1706,7 @@ input[type="radio"]:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: calc(var(--control-lg) + 16px);
+  height: calc(var(--control-lg) + 12px);
   flex: none;
   padding: 0 20px;
   border-bottom: 1px solid transparent;
@@ -3950,7 +3950,8 @@ input[type="radio"]:focus-visible {
   flex: 1;
   min-width: 0;
   align-self: center;
-  padding: 8px 6px;
+  /* (36 button − 24 line) / 2: one line of text sits level with the round buttons at 48. */
+  padding: 6px 6px;
 }
 
 .composer-input textarea {

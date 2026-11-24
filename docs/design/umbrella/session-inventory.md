@@ -47,7 +47,7 @@ Elevation, in short: **e0** flat on its tier · **e1** a resting card (hairline 
 | 19 | Agent disc | `.turn-disc` | e0 | The brand cloud, aligned to the first line. |
 | 20 | Step line (folded) | `.turn-process` | e0 | One quiet line: mark, plain words, time, chevron. |
 | 21 | Step rows (open) | `.step-row` | e0 | Rows hang under the line with a hairline guide. |
-| 22 | Prose | `.prose` | — | 15/24, headings 600, lists with breathing room. |
+| 22 | Prose | `.prose` | — | 16/24, headings 600, lists with breathing room. |
 | 23 | Inline code | `.prose code` | — | Small sunken chip in mono. |
 | 24 | Code block | `.code-block` | e1 inset | Code sits on `--code-bg` with a hairline, not a heavy grey slab. |
 | 25 | Table | `.prose table` | e0 | Hairlines only. |

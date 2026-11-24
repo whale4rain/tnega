@@ -41,13 +41,15 @@ Geist for UI, Noto Sans SC for Chinese, JetBrains Mono for code. There is no ser
 
 | Token | Size | Line | Use |
 | --- | --- | --- | --- |
-| `--text-xs` | 11.5 | 16 | Kickers, counts in chips |
-| `--text-sm` | 12.5 | 18 | Meta, help text, times |
-| `--text-md` | 13.5 | 20 | Controls, sidebar rows, menus |
-| `--text-lg` | 15 | 24 | **Reading text**: messages, answers, asks |
-| `--text-xl` | 19 | 26 | Panel titles (Work, Settings) |
+| `--text-xs` | 12 | 16 | Kickers, counts in chips |
+| `--text-sm` | 13 | 18 | Meta, help text, times, group labels |
+| `--text-md` | 14.5 | 22 | Controls, sidebar rows, menus |
+| `--text-lg` | 16 | 24 | **Reading text**: messages, answers, asks |
+| `--text-xl` | 20 | 26 | Panel titles (Work, Settings) |
 | `--text-2xl` | 26 | 32 | Dialog and page titles |
 | `--text-3xl` | 34 | 40 | The welcome greeting |
+
+**Size controls to their text (2026-11-24).** The ramp went one step up (it was 11.5 / 12.5 / 13.5 / 15 / 19) and controls came down, because 13.5 px words in 38–52 px boxes looked like small type in big boxes on a real desk, next to apps such as Claude. A control is about 2.3× its text: rows and buttons 34 (`--nav-row-h`, `--button-h`), fields 36, menu items 34, the composer 48 with 36 round buttons, the header 44. The Small text size in Appearance is the old ramp.
 
 Weights: 400 body, 500 controls, 600 titles and the thing that needs you, 700 display. Nothing in all caps except a kicker (11.5, 700, +0.09em), and kickers appear only in design docs, not in the app.
 
