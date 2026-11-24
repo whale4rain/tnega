@@ -50,6 +50,15 @@ Expanded, steps are rows directly on the panel (no frame), indented 24 under the
 - **Quotes**: a 3 px `--border-strong` bar on the left, text in `--text-2`. The only left bar allowed.
 - **Links**: ink, underline 1 px at 30% ink, full ink on hover.
 
+## Streaming
+
+A reply that is still arriving should read like someone writing, not like a network log (2026-11-24).
+
+- **Even pace.** Text is revealed on animation frames at a pace that follows the backlog: a burst drains in about a quarter second, and the pace never drops below about 150 characters a second (`useSmoothText`, `lib/streaming.ts`). What is already there when the reply mounts shows at once. Reduced motion shows everything at once.
+- **No half-written Markdown.** While streaming, the last paragraph drops a dangling `**`, `*`, `_` or `` ` ``, a link keeps only its words until the target arrives, a table waits for its `| --- |` line, and an open code fence is closed (`settleMarkdown`). Finished text is rendered as written.
+- **Where it is writing:** a small soft ink dot (0.5em, pulsing) after the last words, on the same line: in the last paragraph, heading or list item, never on a line of its own and never inside code.
+- **No jump at the end.** No "Working" line appears under text that has just finished; the live footer (Process output) takes the same height as the turn actions that replace it.
+
 ## Turn actions
 
 Copy, fork, retry and so on belong to the moment you reach for them. They are round 32 buttons (or a pill with a word for "Fork from here") under the turn, shown on hover or keyboard focus of the turn. On touch they are always shown.

@@ -2210,11 +2210,14 @@ input[type="radio"]:focus-visible {
 }
 
 /* The live turn's output switch, at the foot of the reply that is streaming. */
+/* The live turn's footer takes the same room as the actions that replace it when the turn ends,
+   so the transcript does not jump at the end of a reply. */
 .turn-process {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 2px 0 0 -2px;
+  min-height: 32px;
+  margin: -6px 0 0 -2px;
 }
 
 .turn-process-label {
@@ -2791,21 +2794,33 @@ input[type="radio"]:focus-visible {
   background-image: linear-gradient(var(--surface-hover), var(--surface-hover));
 }
 
-.streaming .prose > :last-child::after {
+/* Where the reply is being written: a small soft ink dot after the last words, on the same line.
+   It sits in the last paragraph, heading or list item, never on a line of its own after a list,
+   and never inside a code block (umbrella/conversation.md, Streaming). */
+.streaming .prose > :is(p, h1, h2, h3, h4, h5, h6, blockquote):last-child::after,
+.streaming .prose > :is(ul, ol):last-child > li:last-child::after {
   content: "";
   display: inline-block;
-  width: 7px;
-  height: 1.05em;
-  margin-left: 3px;
-  vertical-align: -0.15em;
-  border-radius: 2px;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.3em;
+  vertical-align: 0.05em;
+  border-radius: var(--radius-full);
   background: var(--accent);
-  animation: caret 1s steps(2) infinite;
+  animation: stream-dot 1.1s ease-in-out infinite;
 }
 
-@keyframes caret {
+@keyframes stream-dot {
   50% {
-    opacity: 0;
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming .prose > :is(p, h1, h2, h3, h4, h5, h6, blockquote):last-child::after,
+  .streaming .prose > :is(ul, ol):last-child > li:last-child::after {
+    animation: none;
   }
 }
 
