@@ -116,8 +116,8 @@
   gap: 12px;
   flex: 1;
   min-width: 0;
-  min-height: 56px;
-  padding: 8px 12px;
+  min-height: 60px;
+  padding: 10px 14px;
   border-radius: inherit;
   color: var(--text);
   text-align: left;
@@ -138,7 +138,7 @@
 .work-row-text {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
@@ -1118,7 +1118,7 @@
   100% { background: transparent; }
 }
 
-/* Your ink bubble keeps its fill; a soft halo around it fades instead. */
+/* Your bubble keeps its fill; a soft halo around it fades instead. */
 .room-run-user .room-message.flash {
   animation-name: flash-halo;
 }
@@ -1284,13 +1284,13 @@
 /* --- the room ------------------------------------------------------------ */
 
 .room {
-  gap: 12px;
+  gap: 24px;
 }
 
 .room-run {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
   align-items: flex-start;
 }
@@ -1325,13 +1325,13 @@
   overflow-wrap: anywhere;
 }
 
-/* Your message: the same ink bubble as in a session (tnega-design §5.1). */
+/* Your message: the same sunken bubble as in a session (tnega-design §5.1). */
 .room-run-user .room-message {
   max-width: 85%;
-  padding: 8px 14px;
+  padding: 10px 18px;
   border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xs) var(--radius-xl);
-  background: var(--accent);
-  color: var(--text-inverse);
+  background: var(--surface-sunken);
+  color: var(--text);
 }
 
 .room-run-user .room-message .prose,
@@ -1341,7 +1341,7 @@
 }
 
 .room-run-user .room-message .prose code {
-  background: color-mix(in srgb, var(--text-inverse) 16%, transparent);
+  background: var(--surface-active);
 }
 
 /* What the Agent that started a thread sent it: on the asking side like yours, but a dashed outline
@@ -1497,7 +1497,7 @@
 .wb-card.wb-scroll.board-scroll {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 32px;
 }
 
 /* The project's name in 22/700, then how many threads are going. */
@@ -1526,17 +1526,18 @@
 .board-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-/* Group headers: 12.5/700 ink with the count in 400 --text-3. No band, no all-caps. */
+/* Group headers: quiet 12.5/600 --text-3 labels with the count in 400, as in the sidebar. No band,
+   no all-caps. */
 .board-group-head,
 .board-day-head {
-  margin: 0 0 4px;
+  margin: 0 0 6px 2px;
   padding: 0;
   font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--text);
+  font-weight: 600;
+  color: var(--text-3);
 }
 
 .board-group-head .count {
@@ -1553,7 +1554,7 @@
 .board-rows {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 /* One line: the done tick and "7 done today"; it opens the history below it. */

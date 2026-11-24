@@ -27,7 +27,7 @@ Rules:
 | `--text` | `#0e0e0e` | Reading text, titles, the one thing that needs you |
 | `--text-2` | `#3a3a3c` | Secondary lines (what a thread is doing, descriptions) |
 | `--text-3` | `#545457` | Meta: times, counts, hints. Still ≥ 4.5:1 on every tier |
-| `--accent` | `#0e0e0e` | Ink fills: primary buttons, your message, the send button, switches when on |
+| `--accent` | `#0e0e0e` | Ink fills: primary buttons, the send button, an open toggle, switches when on |
 | `--text-inverse` | `#f7f7f7` | Text on ink |
 | `--danger` | `#a62b25` | The only colour that is not grey: failure marks, delete confirmations, field errors |
 
@@ -55,9 +55,13 @@ Weights: 400 body, 500 controls, 600 titles and the thing that needs you, 700 di
 
 A 4 px grid. The values that recur:
 
-- **10**: the gap between the ground and a floating panel (`--panel-gap`), on every side.
+- **12**: the gap between the ground and a floating panel (`--panel-gap`), on every side.
 - **6**: the inset inside the Workbench frame, so the cards inside are concentric (22 − 6 = 16).
-- **12 / 16**: the gap between parts of a turn / between turns.
+- **12 / 28**: the gap between parts of a turn / between turns.
+- **8**: between cards or work rows in a list. Rows never touch; 4 reads as one cramped block.
+- **18–32**: between groups (sidebar sections 18, Board groups 32, the welcome page's recent list 48 below the starters).
+
+**Breathing room (2026-11-24).** When a screen feels crowded, add space between groups before shrinking anything, and quiet the labels before the content: group labels are 12.5/600 `--text-3`, the rows under them carry the ink. Ink fills are for the one action inside a view (Send, Start, an open toggle); chrome around it (New session, your own message) stays a tone step, so a page has at most one or two dark shapes. Many black slabs read as cheap, not bold.
 - **28**: the conversation's side padding at full width.
 - **680**: the conversation column (`--reading-width`).
 

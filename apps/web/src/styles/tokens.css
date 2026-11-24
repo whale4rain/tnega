@@ -61,7 +61,7 @@
    */
   --header-h: 32px;
   /* Umbrella: the gap between the window ground and the panels floating on it. */
-  --panel-gap: 10px;
+  --panel-gap: 12px;
   --toolbar-h: 28px;
   --control-lg: 32px;
   --control: 26px;

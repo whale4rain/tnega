@@ -11,7 +11,7 @@ Below 860 px the layout changes; the components do not.
 
 ## Targets
 
-Every target is at least 44. Buttons become 44 tall; work rows stay 56; menu items become 44; round buttons become 44.
+Every target is at least 44. Buttons become 44 tall; work rows stay 60; menu items become 44; round buttons become 44.
 
 ## Composer
 

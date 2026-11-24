@@ -1094,8 +1094,8 @@ input[type="radio"]:focus-visible {
   min-height: 0;
   /* Umbrella: the sidebar is the ground itself; the view beside it is a panel one tone up. */
   background: var(--bg-sidebar);
-  padding: 0 10px 8px;
-  gap: 6px;
+  padding: 0 12px 12px;
+  gap: 10px;
 }
 
 /* Folded: hidden once it has slid out, so it takes no focus and paints nothing. */
@@ -1104,13 +1104,13 @@ input[type="radio"]:focus-visible {
   transition: visibility 0s linear var(--duration-panel);
 }
 
-/* The brand row (umbrella/sidebar.md): 44px in compact, level with the conversation header. */
+/* The brand row (umbrella/sidebar.md): 48px in compact, level with the conversation header. */
 .sidebar-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex: none;
-  height: calc(var(--control-lg) + 12px);
+  height: calc(var(--control-lg) + 16px);
   padding: 0 2px 0 6px;
 }
 
@@ -1137,8 +1137,9 @@ input[type="radio"]:focus-visible {
 }
 
 /*
- * The start row (umbrella/sidebar.md): one ink pill, New session, filling the width, and a round
- * sunken + beside it that holds New project, Temporary chat and Open a folder.
+ * The start row (umbrella/sidebar.md): one white pill, New session, filling the width, and a quiet
+ * round + beside it that holds New project, Temporary chat and Open a folder. Ink is kept for the
+ * one action inside a view (Send, Start); the sidebar stays light.
  */
 .sidebar-start {
   display: flex;
@@ -1158,16 +1159,16 @@ input[type="radio"]:focus-visible {
   height: var(--button-h);
   padding: 0 16px;
   border-radius: var(--radius-full);
-  background: var(--accent);
-  color: var(--text-inverse);
+  background: var(--surface);
+  color: var(--text);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
   transition: background var(--duration-fast), transform var(--duration-fast);
 }
 
 .sidebar-new:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 88%, var(--bg-sidebar));
+  background: linear-gradient(var(--surface-hover) 0 0) var(--surface);
 }
 
 .sidebar-new:active:not(:disabled) {
@@ -1184,14 +1185,15 @@ input[type="radio"]:focus-visible {
   width: var(--button-h);
   height: var(--button-h);
   border-radius: var(--radius-full);
-  background: var(--surface-sunken);
-  color: var(--text);
-  transition: background var(--duration-fast);
+  background: transparent;
+  color: var(--text-2);
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
 
 .sidebar-plus:hover,
 .sidebar-plus[aria-expanded="true"] {
-  background: linear-gradient(var(--surface-hover) 0 0) var(--surface-sunken);
+  background: var(--surface-active);
+  color: var(--text);
 }
 
 .sidebar-new:focus-visible,
@@ -1201,13 +1203,14 @@ input[type="radio"]:focus-visible {
   outline-offset: 2px;
 }
 
-/* Group headers: 12.5/700 ink, the count in 400 --text-3. No all-caps. */
+/* Group headers: quiet labels, 12.5/600 --text-3 with the count in 400. No all-caps. The rows carry
+   the ink; the labels only mark where a group starts. */
 .sidebar-group-head {
   margin: 0;
-  padding: 6px 10px 4px;
+  padding: 4px 10px 6px;
   font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--text);
+  font-weight: 600;
+  color: var(--text-3);
 }
 
 .sidebar-group-head .count {
@@ -1255,11 +1258,11 @@ input[type="radio"]:focus-visible {
   gap: 6px;
   flex: 1;
   min-width: 0;
-  height: var(--control);
+  height: var(--control-lg);
   padding: 0 6px;
   color: var(--text-2);
-  font-size: var(--text-md);
-  font-weight: 650;
+  font-size: var(--text-sm);
+  font-weight: 600;
   text-align: left;
 }
 
@@ -1383,11 +1386,11 @@ input[type="radio"]:focus-visible {
 
 /* Pinned: every project, above the workspace groups, without its workspace; it collapses like a group. */
 .sidebar-section {
-  margin-bottom: 10px;
+  margin-bottom: 18px;
 }
 
 .sidebar-section .workspace-toggle {
-  color: var(--text);
+  color: var(--text-3);
 }
 
 .sidebar-section .session-button {
@@ -1454,17 +1457,27 @@ input[type="radio"]:focus-visible {
   color: var(--text);
 }
 
-/* A white pill: magnifier, "Search", and the shortcut in mono. Focus raises nothing; it shows the ring. */
+/* A quiet row: magnifier, "Search", and the shortcut in mono. It takes the white surface only while you
+   type in it, with the focus ring; at rest the New session pill above is the one white shape. */
 .sidebar-search {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex: none;
   height: var(--nav-row-h);
-  padding: 0 8px 0 14px;
+  padding: 0 8px 0 12px;
   border-radius: var(--radius-full);
-  background: var(--surface);
+  background: transparent;
   color: var(--text-3);
+  transition: background var(--duration-fast);
+}
+
+.sidebar-search:hover {
+  background: var(--surface-hover);
+}
+
+.sidebar-search:focus-within {
+  background: var(--surface);
 }
 
 .sidebar-search:focus-within {
@@ -1494,7 +1507,7 @@ input[type="radio"]:focus-visible {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  margin: 2px -6px 0;
+  margin: 8px -6px 0;
   padding: 0 6px;
 }
 
@@ -1555,7 +1568,7 @@ input[type="radio"]:focus-visible {
 
 .session-item.active .session-title {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .session-title > span {
@@ -1629,7 +1642,7 @@ input[type="radio"]:focus-visible {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding-top: 6px;
+  padding-top: 10px;
 }
 
 /* Footer: round Settings (34) at the left, the light/dark pill at the right. */
@@ -1694,9 +1707,9 @@ input[type="radio"]:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: calc(var(--control-lg) + 12px);
+  height: calc(var(--control-lg) + 16px);
   flex: none;
-  padding: 0 16px;
+  padding: 0 20px;
   border-bottom: 1px solid transparent;
   /* Its popovers (Agent, Access, jobs) must paint above the transcript: with
    * Glass everywhere the header is a stacking context, and a z-index:auto one
@@ -2143,13 +2156,13 @@ input[type="radio"]:focus-visible {
 }
 
 .conv-scroll > .conv-column {
-  padding-top: 20px;
-  padding-bottom: 40px;
+  padding-top: 28px;
+  padding-bottom: 56px;
 }
 
 .conv-dock {
   flex: none;
-  padding-bottom: 14px;
+  padding-bottom: 20px;
   background: linear-gradient(to bottom, transparent, var(--bg) 22px);
   margin-top: -22px;
   padding-top: 22px;
@@ -2261,13 +2274,13 @@ input[type="radio"]:focus-visible {
   color: var(--text);
 }
 
-/* Starters (welcome-and-empty.md): sunken pills, 34 tall, 13.5 text. */
+/* Starters (welcome-and-empty.md): sunken pills, 34 tall, 13.5 text, 20 below the composer. */
 .welcome-starters {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 20px;
 }
 
 .welcome-starter {
@@ -2314,14 +2327,14 @@ input[type="radio"]:focus-visible {
   gap: 2px;
   width: 100%;
   max-width: 520px;
-  margin: 32px auto 0;
+  margin: 48px auto 0;
 }
 
 .welcome-recent-label {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   padding: 0 12px;
-  color: var(--text-2);
-  font-size: var(--text-md);
+  color: var(--text-3);
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -2393,7 +2406,7 @@ input[type="radio"]:focus-visible {
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
-  padding-bottom: 28px;
+  padding-bottom: 36px;
 }
 
 .conversation.is-welcome .welcome-hero {
@@ -2521,7 +2534,7 @@ input[type="radio"]:focus-visible {
 .timeline {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 28px;
 }
 
 /* A long session is hundreds of turns. Those off screen skip style, layout and paint until they
@@ -2537,19 +2550,19 @@ input[type="radio"]:focus-visible {
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  margin-top: 6px;
   animation: fade-up 260ms var(--ease-out);
 }
 
-/* Your message: an ink bubble on the right (Umbrella §5.1), the same shape as in a Project. Line breaks
+/* Your message: a sunken bubble on the right (Umbrella §5.1), the same shape as in a Project. It sits a
+   tone below the panel in ink text, so the reply stays the loudest thing on the page. Line breaks
    come from the Markdown (`breaks`), not from `pre-wrap`, which would also show the newlines between
    blocks as empty lines. */
 .user-bubble {
   max-width: min(84%, 620px);
-  padding: 9px 16px;
+  padding: 10px 18px;
   border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xs) var(--radius-xl);
-  background: var(--accent);
-  color: var(--text-inverse);
+  background: var(--surface-sunken);
+  color: var(--text);
   overflow-wrap: anywhere;
 }
 
@@ -2559,7 +2572,7 @@ input[type="radio"]:focus-visible {
 }
 
 .user-bubble .prose code {
-  background: color-mix(in srgb, var(--text-inverse) 16%, transparent);
+  background: var(--surface-active);
 }
 
 .user-bubble .prose {
