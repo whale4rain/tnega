@@ -38,7 +38,7 @@ Every control has one shape and no outline. Pills for things you press, sunken f
 
 ## Menus and popovers
 
-- White (`--surface-raised`), radius 16, `--border` hairline and `--shadow-md`, 6 inset.
+- White (`--surface-raised`), radius 16, `--shadow-md` (its hairline ring is part of the shadow), 6 inset.
 - Items 36 tall, radius 10, 14 text, an optional 15 lucide icon. The current item gets the `done` tick. Hover is `--surface-hover`.
 - Destructive items sit last after one separator, in `--danger`.
 - Keyboard: arrows move, Enter picks, Esc closes and returns focus.

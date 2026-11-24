@@ -19,4 +19,4 @@ The same pill above the keyboard, with safe-area padding. Attach and send are 40
 
 ## What does not change
 
-Pen marks keep their sizes. Tone tiers, radii of cards and the rules about borders and shadows are the same. There is no separate phone design language.
+Pen marks keep their sizes. Tone tiers, radii of cards, the no-border rule and the elevation scale are the same. There is no separate phone design language.

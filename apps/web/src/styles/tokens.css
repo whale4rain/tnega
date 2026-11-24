@@ -169,10 +169,18 @@
   --syntax-type: #9a3a63;
   --syntax-property: #1b5f75;
 
-  /* Umbrella: surfaces in the page never cast shadows; only popovers (md) and dialogs (lg) do. */
-  --shadow-sm: none;
-  --shadow-md: 0 12px 32px -12px rgba(14, 14, 14, 0.18);
-  --shadow-lg: 0 24px 64px -20px rgba(14, 14, 14, 0.28);
+  /*
+   * Elevation (umbrella/foundations.md, 2026-11-24). Each step is a 1px hairline ring plus one or two
+   * soft shadows, so a raised shape has an edge you can see without an outline border.
+   * xs: small raised controls · sm: resting cards · sm-hover: a card or control under the pointer ·
+   * panel: the floating panels · md: popovers · lg: dialogs.
+   */
+  --shadow-xs: 0 0 0 1px rgba(14, 14, 14, 0.05), 0 1px 2px rgba(14, 14, 14, 0.06);
+  --shadow-sm: 0 0 0 1px rgba(14, 14, 14, 0.045), 0 1px 2px rgba(14, 14, 14, 0.04), 0 4px 14px -6px rgba(14, 14, 14, 0.1);
+  --shadow-sm-hover: 0 0 0 1px rgba(14, 14, 14, 0.06), 0 2px 4px rgba(14, 14, 14, 0.05), 0 12px 28px -10px rgba(14, 14, 14, 0.16);
+  --shadow-panel: 0 0 0 1px rgba(14, 14, 14, 0.04), 0 1px 3px rgba(14, 14, 14, 0.05), 0 18px 40px -22px rgba(14, 14, 14, 0.16);
+  --shadow-md: 0 0 0 1px rgba(14, 14, 14, 0.06), 0 4px 12px -2px rgba(14, 14, 14, 0.07), 0 20px 44px -14px rgba(14, 14, 14, 0.22);
+  --shadow-lg: 0 0 0 1px rgba(14, 14, 14, 0.06), 0 10px 24px -8px rgba(14, 14, 14, 0.12), 0 36px 80px -24px rgba(14, 14, 14, 0.34);
   --disc: #b6b6b6;
   --pen: var(--text);
   --scrim: rgba(18, 26, 40, 0.3);
@@ -251,9 +259,12 @@
   --syntax-type: #f2a0c0;
   --syntax-property: #7fd3e6;
 
-  --shadow-sm: none;
-  --shadow-md: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.75);
+  --shadow-xs: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.055), 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px -6px rgba(0, 0, 0, 0.55);
+  --shadow-sm-hover: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 2px 4px rgba(0, 0, 0, 0.45), 0 14px 32px -10px rgba(0, 0, 0, 0.65);
+  --shadow-panel: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 3px rgba(0, 0, 0, 0.45), 0 20px 48px -20px rgba(0, 0, 0, 0.7);
+  --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 22px 52px -14px rgba(0, 0, 0, 0.75);
+  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 10px 24px -8px rgba(0, 0, 0, 0.5), 0 36px 88px -24px rgba(0, 0, 0, 0.85);
   --disc: #3a3a3d;
   --pen: var(--text);
   --scrim: rgba(4, 6, 10, 0.62);

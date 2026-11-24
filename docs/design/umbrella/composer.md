@@ -8,7 +8,7 @@ One white pill that grows only when you write more.
 ( + )  Reply, / for commands, @ for files          DeepSeek ⌄  (●↑)
 ```
 
-- The shell: `--surface-raised`, radius 26, min-height 52, padding 6 6 6 8, no border, no shadow, no focus ring of its own (the caret is the focus).
+- The shell: `--surface-raised`, radius 26, min-height 52, padding 6 6 6 8, no border, `--shadow-sm` at rest and `--shadow-sm-hover` while focused, no focus ring of its own (the caret is the focus).
 - **Attach**: a round 40 button with + on the left. It opens a menu: *Files*, *Images*, *Paste from clipboard*.
 - **Field**: 15/24, grows up to 40% of the panel height, then scrolls. Placeholder says what Enter does right now ("Reply…", "Queue a message").
 - **Model word**: the model's short name with a caret, 13 `--text-2`. Its menu holds the model, effort, and mode. The old separate effort dropdown and mode buttons fold into it.

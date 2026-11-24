@@ -843,7 +843,6 @@ input[type="radio"]:focus-visible {
   padding: 6px;
   border-radius: var(--radius-xl);
   background: var(--glass-surface);
-  border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
@@ -1736,12 +1735,14 @@ input[type="radio"]:focus-visible {
     opacity var(--duration-panel) var(--ease-out), visibility var(--duration-panel);
 }
 
-/* Title and workspace share one line so the header fits the 32px title bar. */
+/* Title and workspace share one line so the header fits the 32px title bar. When the header is
+   narrow (the Workbench is open) the folder chip gives way first, then the title; nothing overlaps
+   the mode words. */
 .conv-title-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 96px;
+  min-width: 0;
   flex: 1;
 }
 
@@ -1853,11 +1854,14 @@ input[type="radio"]:focus-visible {
   white-space: nowrap;
   font-size: var(--text-xs);
   color: var(--text-3);
+  flex-shrink: 4;
+  overflow: hidden;
 }
 
 /* The folder as a sunken chip beside the title (umbrella/conversation.md, Header). */
 .conv-folder {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 160px;
   padding: 3px 10px;
   border-radius: var(--radius-full);
@@ -2459,7 +2463,7 @@ input[type="radio"]:focus-visible {
   height: 64px;
   border-radius: 18px;
   background: var(--surface-raised);
-  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 
 .welcome-umbrella svg {
@@ -3697,7 +3701,8 @@ input[type="radio"]:focus-visible {
   position: relative;
   margin: 0 0 1em;
   border-radius: var(--radius-lg);
-  background: var(--surface-sunken);
+  background: var(--code-bg);
+  box-shadow: inset 0 0 0 1px var(--code-border);
 }
 
 .code-block-tools {
@@ -3779,7 +3784,8 @@ input[type="radio"]:focus-visible {
   position: relative;
 }
 
-/* One tone above the conversation panel, no edge and no shadow (Umbrella §3.8). The caret is the focus. */
+/* The main object on the page (session-inventory #34): white, with the resting card elevation, which
+   deepens while you type. No outline; the caret is the focus. */
 .composer-box {
   min-height: var(--composer-h);
   border-radius: var(--radius-composer);
@@ -3789,7 +3795,12 @@ input[type="radio"]:focus-visible {
   cursor: text;
   outline: 2px dashed transparent;
   outline-offset: -4px;
-  transition: outline-color var(--duration-fast), background var(--duration-fast);
+  box-shadow: var(--shadow-sm);
+  transition: outline-color var(--duration-fast), background var(--duration-fast), box-shadow var(--duration-med) var(--ease-out);
+}
+
+.composer-box:focus-within {
+  box-shadow: var(--shadow-sm-hover);
 }
 
 /* One row: attach on the left, the field, then the model word and send. The buttons sit on the last line. */
@@ -6581,3 +6592,80 @@ span.pen-hatch {
 .ctx-models th:first-child { overflow: hidden; max-width: 220px; text-align: left; text-overflow: ellipsis; font-weight: 500; }
 .ctx-table-scroll { overflow-x: auto; }
 .ctx-models thead th { color: var(--text-3); font-weight: 500; }
+
+/*
+ * Elevation (umbrella/foundations.md "Elevation", session-inventory.md, 2026-11-24).
+ * The flat tone steps stay; on top of them each raised shape gets the step that matches what it
+ * is: panels float (--shadow-panel), cards rest (--shadow-sm), small controls sit up (--shadow-xs),
+ * and anything under the pointer lifts (--shadow-sm-hover). Popovers and dialogs keep md / lg.
+ */
+.app > main {
+  box-shadow: var(--shadow-panel);
+}
+
+.sidebar-new {
+  box-shadow: var(--shadow-xs);
+  transition: background var(--duration-fast), transform var(--duration-fast), box-shadow var(--duration-med) var(--ease-out);
+}
+
+.sidebar-new:hover:not(:disabled) {
+  box-shadow: var(--shadow-sm-hover);
+}
+
+.sidebar-search:focus-within,
+.session-item.active,
+.segmented button.active,
+.work-pill.is-open,
+.button.primary,
+.send-button:not(:disabled),
+.office-file,
+.queued-item,
+input[type="checkbox"].switch::after {
+  box-shadow: var(--shadow-xs);
+}
+
+.notice-card,
+.approval-card,
+.question-card,
+.result-card,
+.a2ui-surface,
+.settings-card {
+  box-shadow: var(--shadow-sm);
+}
+
+.office-file {
+  transition: background var(--duration-fast), box-shadow var(--duration-med) var(--ease-out);
+}
+
+.office-file:hover:not(:disabled) {
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm-hover);
+}
+
+/* Starters are white pills that lift a little under the pointer. */
+.welcome-starter {
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  transition: background var(--duration-fast), transform var(--duration-fast), box-shadow var(--duration-med) var(--ease-out);
+}
+
+.welcome-starter:hover:not(:disabled) {
+  background: var(--surface);
+  box-shadow: var(--shadow-sm-hover);
+  transform: translateY(-1px);
+}
+
+.welcome-recent-row {
+  transition: background var(--duration-fast), box-shadow var(--duration-med) var(--ease-out);
+}
+
+.welcome-recent-row:hover {
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-starter:hover:not(:disabled) {
+    transform: none;
+  }
+}

@@ -73,7 +73,18 @@ Nested radii are concentric: inner = outer − inset. Panels 22, cards 16 (14 fo
 
 ## Elevation
 
-`--shadow-sm` is `none`. Nothing on the page has a shadow. `--shadow-md` is only for menus, popovers and tooltips. `--shadow-lg` is only for dialogs and sheets.
+Changed 2026-11-24: a page with no shadows at all read as flat and cheap, so Umbrella now has a soft elevation scale on top of its tone steps. Every step is a 1 px hairline ring (5–8% ink; in dark mode 5–8% white) plus one or two soft, wide shadows. It gives a raised shape a visible edge without an outline border, and it never replaces the tone steps.
+
+| Token | Use |
+| --- | --- |
+| `--shadow-xs` | Small raised controls: New session, the open session row, the selected segment, the open Workbench pill and tab, primary and send buttons, starters, file chips, the switch knob, Workbench cards. |
+| `--shadow-sm` | Resting cards: the composer, notices, approval and question cards, result cards, settings cards, the welcome brand tile. |
+| `--shadow-sm-hover` | Something under the pointer or being typed in: a hovered card or starter, the focused composer, a hovered New session. |
+| `--shadow-panel` | The floating panels: the conversation and the Workbench frame. |
+| `--shadow-md` | Menus, popovers, tooltips and the jump-to-latest button. |
+| `--shadow-lg` | Dialogs and sheets. |
+
+Still flat: the ground, rows in a list (until open or hovered), your message bubble, fields (sunken), chips and labels. Code blocks are inset: `--code-bg` with a 1 px `--code-border` ring. The shadows are defined once for light and once for dark in `tokens.css`, so every palette gets them. The list of which part gets which step is in [session-inventory.md](session-inventory.md).
 
 ## Focus
 
