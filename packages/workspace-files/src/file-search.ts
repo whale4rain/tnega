@@ -1,3 +1,4 @@
+import type { ExecutionProvider } from '@tnega/process'
 import { localExecutionProvider } from '@tnega/process-local'
 import { DEFAULT_SEARCH_EXCLUDES } from '@tnega/search'
 import { resolveRipgrepPath } from '@tnega/search-ripgrep'
@@ -16,13 +17,22 @@ const MAX_FILES = 20_000
 
 const cache = new Map<string, { at: number, files: Promise<string[]> }>()
 
-async function listFiles(workspace: string): Promise<string[]> {
+/** Where the listing runs: this machine by default, or another one (an E2B box) and its own ripgrep. */
+export interface FileListingMachine {
+  /** A key for this machine in the short cache. */
+  key: string
+  runProcess: ExecutionProvider['runProcess']
+  /** The machine's ripgrep. */
+  ripgrep: string
+}
+
+async function listFiles(workspace: string, machine?: FileListingMachine): Promise<string[]> {
   const argv = [
-    await resolveRipgrepPath(),
+    machine ? machine.ripgrep : await resolveRipgrepPath(),
     '--no-config', '--hidden', '--no-require-git', '--files', '--sort=modified',
     ...DEFAULT_SEARCH_EXCLUDES.map(name => `--glob=!**/${name}`),
   ]
-  const result = await localExecutionProvider.runProcess({ argv, cwd: workspace, timeoutMs: 15_000, maxBuffer: 8 * 1024 * 1024 })
+  const result = await (machine?.runProcess ?? localExecutionProvider.runProcess)({ argv, cwd: workspace, timeoutMs: 15_000, maxBuffer: 8 * 1024 * 1024 })
   // Exit code 1 means "no files"; anything else is a real failure.
   if (result.exitCode !== 0 && result.exitCode !== 1) throw new Error(result.stderr.trim() || `ripgrep exited with ${result.exitCode}`)
   // `--sort=modified` lists oldest first; mentions want the newest first.
@@ -34,12 +44,13 @@ async function listFiles(workspace: string): Promise<string[]> {
     .slice(0, MAX_FILES)
 }
 
-export function workspaceFiles(workspace: string): Promise<string[]> {
-  const cached = cache.get(workspace)
+export function workspaceFiles(workspace: string, machine?: FileListingMachine): Promise<string[]> {
+  const key = machine ? `${machine.key}\0${workspace}` : workspace
+  const cached = cache.get(key)
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.files
-  const files = listFiles(workspace)
-  cache.set(workspace, { at: Date.now(), files })
-  files.catch(() => cache.delete(workspace))
+  const files = listFiles(workspace, machine)
+  cache.set(key, { at: Date.now(), files })
+  files.catch(() => cache.delete(key))
   return files
 }
 
@@ -75,6 +86,6 @@ export function rankFiles(files: readonly string[], query: string, limit: number
   return scored.slice(0, limit).map(entry => entry.path)
 }
 
-export async function searchWorkspaceFiles(workspace: string, query: string, limit = 30): Promise<string[]> {
-  return rankFiles(await workspaceFiles(workspace), query, Math.min(Math.max(1, limit), 100))
+export async function searchWorkspaceFiles(workspace: string, query: string, limit = 30, machine?: FileListingMachine): Promise<string[]> {
+  return rankFiles(await workspaceFiles(workspace, machine), query, Math.min(Math.max(1, limit), 100))
 }

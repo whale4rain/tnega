@@ -14,7 +14,9 @@ import { machinePool, type MachineLease, type MachinePoolConfig } from '@tnega/m
 import type { DaemonLink } from '@tnega/daemon-protocol'
 import { MCP_CONFIG_FILE, parseMcpConfig, type McpLaunchOptions } from '@tnega/coding-agent'
 import { RemoteWorkspaceFs, announcedWorkspace } from '@tnega/fs-remote'
-import { remotePipes } from '@tnega/process-remote'
+import { remoteExecutionProvider, remotePipes } from '@tnega/process-remote'
+import type { WorkspaceFs } from '@tnega/fs'
+import type { ExecutionProvider } from '@tnega/process'
 import type { MachineSpec } from './compose.js'
 
 export { BOX_WORKSPACE } from '@tnega/machine-pool'
@@ -95,6 +97,26 @@ export function boxMcp(machine: MachineSpec, cwd: string): McpLaunchOptions | un
       if (!(await files.stat(MCP_CONFIG_FILE))) return {}
       return parseMcpConfig(Buffer.from(await files.readFile(MCP_CONFIG_FILE)).toString('utf8'))
     },
+  }
+}
+
+/**
+ * The Workbench's view of a box's workspace, for boxes that keep the work on
+ * their own volume (E2B): its files, and git and ripgrep run in the box. The
+ * box is its own sandbox, so these run without an inner one; files stay
+ * fenced to the workspace by the box's daemon. `release` ends the lease.
+ */
+export function boxWorkbench(lease: MachineLease): { fs: WorkspaceFs; runProcess: ExecutionProvider['runProcess']; key: string; release(): void } {
+  const workspace = announcedWorkspace(lease.link, lease.workspacePath)
+  const execution = remoteExecutionProvider(lease.link, {
+    workspaceId: workspace.id,
+    sandbox: () => ({ mode: 'bypass', sessionId: 'workbench' }),
+  })
+  return {
+    fs: new RemoteWorkspaceFs(lease.link, workspace, lease.workspacePath),
+    runProcess: request => execution.runProcess(request),
+    key: `box:${lease.machineId}`,
+    release: () => lease.release(),
   }
 }
 

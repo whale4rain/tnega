@@ -238,8 +238,10 @@ apply as they do on the host.
 **E2B**: set `E2B_API_KEY` (and `E2B_API_URL` for a self-hosted runtime).
 The box dials `wss://<TNEGA_PUBLIC_URL host>/daemon`, so the server must be on
 HTTPS, and `TNEGA_BOX_ADDRESS` must be the server's public IPv4 for the egress
-proxy. An E2B box has its own volume: the Workbench still shows the server
-folder, not the box's files.
+proxy. An E2B box has its own volume, so the Workbench shows the files in
+your box (the file tree, Changes and `@` file search, with git and ripgrep
+run in the box) while the box runs. Looking never wakes a box: while it
+sleeps, the Workbench says so until the next run wakes it.
 
 How it fits together:
 

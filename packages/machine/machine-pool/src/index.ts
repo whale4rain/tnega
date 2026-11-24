@@ -321,6 +321,15 @@ export class MachinePool extends Service {
     await tx.query(`update machine set state = $2 where id = $1::uuid`, [id, state])
   }
 
+  /**
+   * Whether a box mounts the workspace folder on this host. When it does not
+   * (E2B), the box's own volume holds the work, and whoever shows files reads
+   * them in the box.
+   */
+  get mountsHostWorkspace(): boolean {
+    return this.config.hostWorkspace !== false
+  }
+
   /** The Provider's kind (`gvisor`, `e2b`), for an admin page. */
   get provider(): string {
     return this.machines.kind
@@ -385,6 +394,25 @@ export class MachinePool extends Service {
       this.leave(id)
       throw error
     }
+  }
+
+  /**
+   * The box for an account's workspace if it runs and its daemon is
+   * connected right now; undefined otherwise. It neither starts nor resumes
+   * a box and does not reset its idle clock, so something that only looks
+   * (the Workbench, which asks every few seconds) never keeps a box awake.
+   * The lease's `release` does nothing.
+   */
+  async peek(input: { accountId: string; workspace: string; scope?: string }): Promise<MachineLease | undefined> {
+    const { rows } = await this.sql.query(
+      `select ${COLUMNS} from machine where account_id = $1::uuid and workspace = $2 and scope = $3`,
+      [input.accountId, input.workspace, input.scope ?? ''],
+    )
+    const row = rows[0] === undefined ? undefined : rowFrom(rows[0])
+    if (row?.state !== 'running' || !row.deviceId) return undefined
+    const live = this.daemons.get(row.deviceId)
+    if (!live) return undefined
+    return { machineId: row.id, deviceId: live.deviceId, link: live.link, workspacePath: WORKSPACE_PATH, release: () => undefined }
   }
 
   /**

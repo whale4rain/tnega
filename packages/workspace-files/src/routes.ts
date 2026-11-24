@@ -1,21 +1,75 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@tnega/core'
 import type { WorkspaceFs } from '@tnega/fs'
+import type { ExecutionProvider } from '@tnega/process'
 import { HttpError, readJsonBody, sendError, sendJson, workspaceParam } from '@tnega/web-kit'
-import { fileDiff, listChanges } from './changes.js'
-import { searchWorkspaceFiles } from './file-search.js'
+import { fileDiff, listChanges, localGit, type GitRunner } from './changes.js'
+import { searchWorkspaceFiles, type FileListingMachine } from './file-search.js'
 import { FileServeError, readWorkspaceFile, sendFile } from './files.js'
 import { MAX_UPLOAD_BYTES, saveUpload } from './uploads.js'
 import { MAX_TEXT_FILE_BYTES, listDirectory, readTextFile, writeTextFile } from './workspace-files.js'
+
+/**
+ * A workspace whose files are on another machine than this one (an E2B box
+ * with its own volume). The Workbench reads them there, and runs git and
+ * ripgrep there for the Changes view and the `@` file search.
+ */
+export interface WorkbenchMachine {
+  fs: WorkspaceFs
+  runProcess: ExecutionProvider['runProcess']
+  /** A key for this machine in the file search's short cache. */
+  key: string
+  /** The machine's ripgrep. Default `rg`. */
+  ripgrep?: string
+  /** Called once the request is answered (a box lease ends). */
+  release?(): void
+}
+
+export interface FileRoutesConfig {
+  /**
+   * The machine a workspace's files are on, asked per request. Undefined (or
+   * no resolver) means this machine, fenced to the workspace as always. A
+   * {@link FileServeError} it throws is the answer (the machine is asleep).
+   */
+  machine?: (workspace: string, req: IncomingMessage) => Promise<WorkbenchMachine | undefined>
+}
+
+/** What a request works on: the workspace's files and git, on whichever machine has them. */
+interface Opened {
+  fs: WorkspaceFs
+  git: GitRunner
+  listing?: FileListingMachine
+}
+
+/** git through a machine's process call, as {@link localGit} runs it here. */
+function machineGit(machine: WorkbenchMachine): GitRunner {
+  return async (cwd, args) => {
+    const result = await machine.runProcess({ argv: ['git', ...args], cwd, timeoutMs: 30_000, maxBuffer: 32 * 1024 * 1024 })
+    if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `git exited with ${result.exitCode}`)
+    return Buffer.from(result.stdout, 'utf8')
+  }
+}
 
 /** The workspace file browsing endpoints; this package owns what it serves. */
 export const fileRoutes = {
   name: 'workspace-file-routes',
   inject: ['webServer', 'fs'],
-  apply(ctx: Context): void {
+  apply(ctx: Context, config: FileRoutesConfig = {}): void {
     const web = ctx.webServer
     // Always fenced: the Workbench never reaches outside the workspace it names.
-    const open = (workspace: string): WorkspaceFs => ctx.fs.workspace(workspace)
+    const open: Open = async (workspace, req, work) => {
+      const machine = await config.machine?.(workspace, req)
+      if (!machine) return await work({ fs: ctx.fs.workspace(workspace), git: localGit })
+      try {
+        return await work({
+          fs: machine.fs,
+          git: machineGit(machine),
+          listing: { key: machine.key, runProcess: machine.runProcess, ripgrep: machine.ripgrep ?? 'rg' },
+        })
+      } finally {
+        machine.release?.()
+      }
+    }
     const changes = changesRoute(open)
     const tree = treeRoute(open)
     const text = textRoute(open)
@@ -34,8 +88,14 @@ export const fileRoutes = {
           return
         }
         const limit = Number(url.searchParams.get('limit') ?? 30)
-        const files = await searchWorkspaceFiles(workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30)
-        sendJson(res, 200, { files })
+        try {
+          const files = await open(workspace, req, ({ fs, listing }) =>
+            searchWorkspaceFiles(listing ? fs.root : workspace, url.searchParams.get('q') ?? '', Number.isFinite(limit) ? limit : 30, listing))
+          sendJson(res, 200, { files })
+        } catch (error) {
+          if (!(error instanceof FileServeError)) throw error
+          sendError(res, error.status, error.message)
+        }
       },
     }))
 
@@ -75,7 +135,7 @@ export const fileRoutes = {
   },
 }
 
-type Open = (workspace: string) => WorkspaceFs
+type Open = <T>(workspace: string, req: IncomingMessage, work: (opened: Opened) => Promise<T>) => Promise<T>
 type Handler = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>
 
 const changesRoute = (open: Open): Handler => async (req, res, url) => {
@@ -86,14 +146,14 @@ const changesRoute = (open: Open): Handler => async (req, res, url) => {
   }
   try {
     if (url.pathname === '/api/changes') {
-      sendJson(res, 200, await listChanges(open(workspace)))
+      sendJson(res, 200, await open(workspace, req, ({ fs, git }) => listChanges(fs, git)))
     } else {
       const path = url.searchParams.get('path')
       if (!path) {
         sendError(res, 400, 'path query parameter is required')
         return
       }
-      sendJson(res, 200, await fileDiff(open(workspace), path))
+      sendJson(res, 200, await open(workspace, req, ({ fs, git }) => fileDiff(fs, path, git)))
     }
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
@@ -113,7 +173,7 @@ const treeRoute = (open: Open): Handler => async (req, res, url) => {
   }
   const path = url.searchParams.get('path') ?? ''
   try {
-    sendJson(res, 200, { path, entries: await listDirectory(open(workspace), path) })
+    sendJson(res, 200, { path, entries: await open(workspace, req, ({ fs }) => listDirectory(fs, path)) })
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
     sendError(res, error.status, error.message)
@@ -133,7 +193,7 @@ const textRoute = (open: Open): Handler => async (req, res, url) => {
   }
   try {
     if (req.method === 'GET') {
-      sendJson(res, 200, await readTextFile(open(workspace), path))
+      sendJson(res, 200, await open(workspace, req, ({ fs }) => readTextFile(fs, path)))
       return
     }
     if (req.method !== 'PUT') {
@@ -146,14 +206,15 @@ const textRoute = (open: Open): Handler => async (req, res, url) => {
       return
     }
     const expected = typeof body.mtimeMs === 'number' ? body.mtimeMs : undefined
-    sendJson(res, 200, await writeTextFile(open(workspace), path, body.content, expected))
+    const content = body.content
+    sendJson(res, 200, await open(workspace, req, ({ fs }) => writeTextFile(fs, path, content, expected)))
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
     sendError(res, error.status, error.message)
   }
 }
 
-const fileRoute = (open: Open): Handler => async (_req, res, url) => {
+const fileRoute = (open: Open): Handler => async (req, res, url) => {
   const workspace = workspaceParam(url)
   const path = url.searchParams.get('path')
   if (!workspace || !path) {
@@ -161,7 +222,7 @@ const fileRoute = (open: Open): Handler => async (_req, res, url) => {
     return
   }
   try {
-    sendFile(res, await readWorkspaceFile(open(workspace), path))
+    sendFile(res, await open(workspace, req, ({ fs }) => readWorkspaceFile(fs, path)))
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
     sendError(res, error.status, error.message)
@@ -185,7 +246,9 @@ const uploadRoute = (open: Open): Handler => async (req, res, url) => {
       sendError(res, 400, 'name and data (base64) are required')
       return
     }
-    sendJson(res, 200, await saveUpload(open(workspace), body.name, Buffer.from(body.data, 'base64')))
+    const name = body.name
+    const data = Buffer.from(body.data, 'base64')
+    sendJson(res, 200, await open(workspace, req, ({ fs }) => saveUpload(fs, name, data)))
   } catch (error) {
     if (error instanceof FileServeError || error instanceof HttpError) {
       sendError(res, error.status, error.message)

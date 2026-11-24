@@ -6,7 +6,7 @@ import { fsLocal } from '@tnega/fs-local'
 import { sandboxSetupRoutes } from '@tnega/sandbox-local'
 import { terminalLocal } from '@tnega/terminal-local'
 import { terminalRoutes } from '@tnega/terminal-routes'
-import { fileRoutes } from '@tnega/workspace-files'
+import { fileRoutes, type FileRoutesConfig } from '@tnega/workspace-files'
 
 export interface DaemonRoutesConfig {
   /**
@@ -16,6 +16,8 @@ export interface DaemonRoutesConfig {
   browser?: () => PlaywrightBrowserHost | undefined
   /** Where the computer-use driver lives, when the person set it. */
   computerDriverPath?: string
+  /** Workspaces whose files are on another machine (a box with its own volume). */
+  files?: FileRoutesConfig
 }
 
 /**
@@ -30,9 +32,9 @@ export const daemonRoutes = {
   name: 'daemon-routes',
   inject: ['webServer'],
   async apply(ctx: Context, config: DaemonRoutesConfig = {}): Promise<void> {
-    // Workbench files are this machine's; a server reads them through a daemon instead.
+    // Workbench files are this machine's, unless `files` says a workspace's are on another one.
     await ctx.plugin(fsLocal)
-    await ctx.plugin(fileRoutes)
+    await ctx.plugin(fileRoutes, config.files ?? {})
     await ctx.plugin(browserRoutes, { browser: config.browser ?? (() => undefined) })
     await ctx.plugin(folderPickerRoutes)
     await ctx.plugin(sandboxSetupRoutes)

@@ -334,3 +334,25 @@ describe('machine pool after a restart', () => {
     expect((await pool.row(lease.machineId))?.state).toBe('paused')
   })
 })
+
+describe('machine pool peek', () => {
+  it('finds a running box without waking a sleeping one or resetting its idle clock', async () => {
+    const pool = await openPool()
+    expect(pool.mountsHostWorkspace).toBe(true)
+    expect(await pool.peek({ accountId: mia.id, workspace: dir })).toBeUndefined()
+    const lease = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const seen = await pool.peek({ accountId: mia.id, workspace: dir })
+    expect(seen?.machineId).toBe(lease.machineId)
+    expect(seen?.link).toBe(lease.link)
+    lease.release()
+    await pool.pause(lease.machineId)
+    expect(await pool.peek({ accountId: mia.id, workspace: dir })).toBeUndefined()
+    expect((await pool.row(lease.machineId))?.state).toBe('paused')
+    // Another scope's box is another box.
+    expect(await pool.peek({ accountId: mia.id, workspace: dir, scope: 'thread:t1' })).toBeUndefined()
+  })
+
+  it('says when boxes keep their own volume instead of the host folder', async () => {
+    expect((await openPool({ hostWorkspace: false })).mountsHostWorkspace).toBe(false)
+  })
+})

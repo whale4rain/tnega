@@ -76,6 +76,7 @@
     "@tnega/daemon": "workspace:*",
     "@electric-sql/pglite": "0.5.12",
     "@tnega/web-kit": "workspace:*",
-    "@tnega/accounts-pg": "workspace:*"
+    "@tnega/accounts-pg": "workspace:*",
+    "@tnega/workspace-files": "workspace:*"
   }
 }
