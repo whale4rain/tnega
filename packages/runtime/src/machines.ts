@@ -12,6 +12,9 @@ import { machineE2B, type E2BMachineConfig } from '@tnega/machine-e2b'
 import { machineGvisor, type GvisorMachineConfig } from '@tnega/machine-gvisor'
 import { machinePool, type MachineLease, type MachinePoolConfig } from '@tnega/machine-pool'
 import type { DaemonLink } from '@tnega/daemon-protocol'
+import { MCP_CONFIG_FILE, parseMcpConfig, type McpLaunchOptions } from '@tnega/coding-agent'
+import { RemoteWorkspaceFs, announcedWorkspace } from '@tnega/fs-remote'
+import { remotePipes } from '@tnega/process-remote'
 import type { MachineSpec } from './compose.js'
 
 export { BOX_WORKSPACE } from '@tnega/machine-pool'
@@ -73,6 +76,26 @@ export function boxMachine(lease: MachineLease, hostWorkspace: string, proxied?:
 /** A box reached through any link to its daemon (a Project thread's leased link). */
 export function boxLinkMachine(link: DaemonLink, hostWorkspace: string, proxied?: () => Promise<readonly string[]>): MachineSpec {
   return { link, secrets: { withholdOthers: true, ...(proxied ? { proxied } : {}) }, hostWorkspace, isolated: true }
+}
+
+/**
+ * A coding session's MCP servers in a box: read from the box's own
+ * `.tnega/mcp.json` and started there over stdin and stdout, beside the files
+ * they work on. Undefined when the box's daemon cannot run them (an image
+ * built before it could): the session then goes without MCP servers.
+ */
+export function boxMcp(machine: MachineSpec, cwd: string): McpLaunchOptions | undefined {
+  const launch = remotePipes(machine.link)
+  if (!launch) return undefined
+  return {
+    cwd,
+    launch,
+    readConfig: async () => {
+      const files = new RemoteWorkspaceFs(machine.link, announcedWorkspace(machine.link, cwd), cwd)
+      if (!(await files.stat(MCP_CONFIG_FILE))) return {}
+      return parseMcpConfig(Buffer.from(await files.readFile(MCP_CONFIG_FILE)).toString('utf8'))
+    },
+  }
 }
 
 /** This host's first private IPv4 address: where its boxes reach it. */

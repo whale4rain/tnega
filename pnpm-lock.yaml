@@ -596,6 +596,9 @@ importers:
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../process/process
       '@tnega/session':
         specifier: workspace:*
         version: link:../session

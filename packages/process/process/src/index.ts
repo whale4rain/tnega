@@ -92,6 +92,32 @@ export interface BackgroundProcessRequest {
   cwd: string
 }
 
+/** A long-lived process the caller talks to over stdin and stdout, such as an MCP server. */
+export interface PipedProcessRequest {
+  argv: readonly string[]
+  cwd: string
+  /** Child-only overrides; the rest of the environment is the machine's. */
+  env?: Readonly<Record<string, string>>
+}
+
+export interface PipedProcessHandlers {
+  /** Output in the order the process wrote it. */
+  onStdout(data: string): void
+  onStderr?(data: string): void
+  /** The process is gone, or the machine it ran on can no longer be reached. */
+  onExit?(reason: string): void
+}
+
+export interface PipedProcess {
+  /** Feed its stdin. */
+  write(data: string): Promise<void>
+  /** Kill it and its children. */
+  close(): Promise<void>
+}
+
+/** Starts {@link PipedProcess}es on one machine (a box's daemon). */
+export type PipedProcessLauncher = (request: PipedProcessRequest, handlers: PipedProcessHandlers) => Promise<PipedProcess>
+
 /**
  * The Windows write sandbox cannot let a confined program create named pipes
  * for its own children (Node/libuv `spawn` with captured output: npm → vite →

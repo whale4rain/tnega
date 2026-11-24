@@ -276,8 +276,15 @@ How it fits together:
   thread's branch back into the folder's repository, then removes the clones.
   It also removes those branches, unless a branch has commits that are not on
   a remote branch or on the folder's HEAD.
-- Not in a box yet: subagents and a coding session's MCP servers. A run in a
-  box goes without them for now.
+- **Subagents and MCP servers.** A run in a box can start subagents; their
+  commands and files are the box's, and their Sessions stay on the server.
+  A coding session's MCP servers come from the box's own
+  `.tnega/mcp.json` and run in the box, talking over stdin and stdout
+  through its daemon (`tnega daemon --pipes`, which the box start script
+  passes). They have the box's network rule and get keys only through the
+  egress proxy. A box image built before this release cannot run them: rebuild
+  the template (`pnpm try:boxes template`, or `deploy/gvisor/build-rootfs.sh`)
+  and the session uses them; until then it goes without.
 
 ## Your own computer as a daemon
 

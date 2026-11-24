@@ -24,7 +24,7 @@ import { toolSubagent } from '@tnega/tool-subagent'
 import { ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import type { SecretVault } from '@tnega/secrets-local'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
-import { runtimeCapabilities, sandboxedPermission, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
+import { boxMcp, runtimeCapabilities, sandboxedPermission, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
 import { toolWebSearch } from '@tnega/tool-web-search'
@@ -146,8 +146,8 @@ export async function handleRun(
         processes: processesFor(context, workspace),
       },
       plugins: [
-        // MCP servers start on this host, so a run in a box goes without them.
-        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false, ...(box ? { mcp: false } : {}) })] : []),
+        // In a box, MCP servers run in the box (none when its image cannot run them).
+        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false, ...(box ? { mcp: boxMcp(box.machine, box.cwd) ?? false } : {}) })] : []),
         ...hostPlugins(context, workspace),
       ],
     })
@@ -440,8 +440,8 @@ export async function createResidentRuntime(
       cwd: workspace,
       mode: 'auto',
       registerAgent: false,
-      // MCP servers start on this host, so a run in a box goes without them.
-      ...(box ? { mcp: false } : {}),
+      // In a box, MCP servers run in the box (none when its image cannot run them).
+      ...(box ? { mcp: boxMcp(box.machine, box.cwd) ?? false } : {}),
     }))
   }
   await root.plugin(agents)

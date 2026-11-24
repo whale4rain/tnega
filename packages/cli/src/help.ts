@@ -69,6 +69,7 @@ const COMMAND_HELP: Record<string, { usage: string; summary: string; options: re
       ['--device-id <id>', 'name this machine (default: from the host name)'],
       ['--browser', 'let the agent drive a browser here (its own profile, not yours)'],
       ['--computer', 'let the agent see and use the apps here; press p to pause'],
+      ['--pipes', 'run MCP servers here with no sandbox (for tnega boxes, which are the sandbox)'],
       HELP,
     ],
   },

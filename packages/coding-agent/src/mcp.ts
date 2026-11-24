@@ -1,7 +1,11 @@
 import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { ReadBuffer, serializeMessage } from '@modelcontextprotocol/sdk/shared/stdio.js'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+import type { PipedProcess, PipedProcessLauncher } from '@tnega/process'
 import type { ToolDefinition } from '@tnega/tools'
 
 export interface McpServerConfig {
@@ -29,18 +33,96 @@ export interface McpRuntime {
   dispose(): Promise<void>
 }
 
+/**
+ * Where MCP servers start. By default on this machine, from
+ * `<cwd>/.tnega/mcp.json`. A run in a box passes the box's launcher and a
+ * reader for the box's own `mcp.json`, so the servers run beside the files.
+ */
+export interface McpLaunchOptions {
+  /** The workspace on that machine: servers start here unless their config names a folder. */
+  cwd: string
+  launch: PipedProcessLauncher
+  readConfig: () => Promise<McpConfig>
+}
+
 interface ActiveConnection {
   client: Client
-  transport: StdioClientTransport
+  transport: Transport
+}
+
+/**
+ * MCP's stdio framing (one JSON-RPC message per line) over a
+ * {@link PipedProcess} on another machine.
+ */
+export class PipedProcessTransport implements Transport {
+  onclose?: () => void
+  onerror?: (error: Error) => void
+  onmessage?: (message: JSONRPCMessage) => void
+  private readonly buffer = new ReadBuffer()
+  private process: PipedProcess | undefined
+  private closed = false
+
+  constructor(
+    private readonly launch: PipedProcessLauncher,
+    private readonly request: Parameters<PipedProcessLauncher>[0],
+    private readonly onStderr?: (data: string) => void,
+  ) {}
+
+  async start(): Promise<void> {
+    if (this.process) throw new Error('PipedProcessTransport already started')
+    this.process = await this.launch(this.request, {
+      onStdout: data => {
+        this.buffer.append(Buffer.from(data, 'utf8'))
+        for (;;) {
+          let message: JSONRPCMessage | null
+          try {
+            message = this.buffer.readMessage()
+          } catch (error) {
+            this.onerror?.(error instanceof Error ? error : new Error(String(error)))
+            continue
+          }
+          if (message === null) break
+          this.onmessage?.(message)
+        }
+      },
+      ...(this.onStderr ? { onStderr: this.onStderr } : {}),
+      onExit: () => this.finish(),
+    })
+  }
+
+  async send(message: JSONRPCMessage): Promise<void> {
+    if (!this.process || this.closed) throw new Error('mcp server is not running')
+    await this.process.write(serializeMessage(message))
+  }
+
+  async close(): Promise<void> {
+    const process = this.process
+    this.finish()
+    await process?.close()
+  }
+
+  private finish(): void {
+    if (this.closed) return
+    this.closed = true
+    this.buffer.clear()
+    this.onclose?.()
+  }
+}
+
+/** Where a workspace keeps its MCP servers, relative to the workspace. */
+export const MCP_CONFIG_FILE = '.tnega/mcp.json'
+
+/** The text of an `mcp.json`; anything but an object reads as no servers. */
+export function parseMcpConfig(text: string): McpConfig {
+  const parsed = JSON.parse(text) as unknown
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  return parsed as McpConfig
 }
 
 export async function loadMcpConfig(cwd: string): Promise<McpConfig> {
   const file = join(resolve(cwd), '.tnega', 'mcp.json')
   try {
-    const text = await readFile(file, 'utf8')
-    const parsed = JSON.parse(text) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return parsed as McpConfig
+    return parseMcpConfig(await readFile(file, 'utf8'))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}
     throw error
@@ -50,8 +132,9 @@ export async function loadMcpConfig(cwd: string): Promise<McpConfig> {
 export async function connectMcpServers(
   cwd: string,
   onTool?: (server: string, tool: ToolDefinition) => void,
+  remote?: McpLaunchOptions,
 ): Promise<McpRuntime> {
-  const config = await loadMcpConfig(cwd)
+  const config = remote ? await remote.readConfig() : await loadMcpConfig(cwd)
   const servers = Object.entries(config.mcpServers ?? {})
   const surveys: McpSurvey[] = []
   const tools: ToolDefinition[] = []
@@ -72,13 +155,20 @@ export async function connectMcpServers(
         name: `tnega-coding-${name}`,
         version: '0.1.0',
       })
-      const mcpTransport = new StdioClientTransport({
-        command: serverConfig.command,
-        args: serverConfig.args ?? [],
-        ...(serverConfig.env ? { env: serverConfig.env } : {}),
-        ...(serverConfig.cwd ? { cwd: resolve(cwd, serverConfig.cwd) } : {}),
-        stderr: serverConfig.stderr ?? 'inherit',
-      })
+      const mcpTransport: Transport = remote
+        ? new PipedProcessTransport(remote.launch, {
+          argv: [serverConfig.command, ...serverConfig.args ?? []],
+          // The box is Linux whatever this host is: join with '/', never this host's separator.
+          cwd: serverConfig.cwd ? posix.resolve(remote.cwd, serverConfig.cwd) : remote.cwd,
+          ...(serverConfig.env ? { env: serverConfig.env } : {}),
+        }, serverConfig.stderr === 'inherit' || serverConfig.stderr === undefined ? data => process.stderr.write(data) : undefined)
+        : new StdioClientTransport({
+          command: serverConfig.command,
+          args: serverConfig.args ?? [],
+          ...(serverConfig.env ? { env: serverConfig.env } : {}),
+          ...(serverConfig.cwd ? { cwd: resolve(cwd, serverConfig.cwd) } : {}),
+          stderr: serverConfig.stderr ?? 'inherit',
+        })
       await mcpClient.connect(mcpTransport)
       const connection: ActiveConnection = { client: mcpClient, transport: mcpTransport }
       active.add(connection)

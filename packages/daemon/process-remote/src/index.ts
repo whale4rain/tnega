@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   decodeBytes,
+  forwardService,
   type DaemonLink,
   type ExitNotification,
   type OutputNotification,
@@ -16,6 +17,7 @@ import type {
   HttpRequest,
   HttpResponse,
   OutputListener,
+  PipedProcessLauncher,
   ProcessRequest,
   ProcessResult,
   ShellRequest,
@@ -211,6 +213,48 @@ export function remoteExecutionProvider(link: DaemonLink, options: RemoteExecuti
   }
   const shell = link.capabilities.shell
   return shell ? { ...provider, describeShell: () => shell } : provider
+}
+
+function pipeEvent(value: unknown): { type: 'stdout' | 'stderr'; data: string } | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const { type, data } = value as { type?: unknown; data?: unknown }
+  return (type === 'stdout' || type === 'stderr') && typeof data === 'string' ? { type, data } : undefined
+}
+
+/**
+ * Start long-lived stdin/stdout processes on a daemon (its `pipes` service),
+ * for MCP servers in a box. Undefined when the daemon serves none: only a
+ * daemon that is itself the sandbox does, and an older box image does not.
+ */
+export function remotePipes(link: DaemonLink): PipedProcessLauncher | undefined {
+  if (!link.capabilities.services?.includes('pipes')) return undefined
+  const pipes = forwardService(link, 'pipes')
+  return async (request, handlers) => {
+    const id = await pipes.call('start', [request.cwd, [...request.argv], { ...request.env }])
+    if (typeof id !== 'string') throw new Error('the daemon sent a malformed process id')
+    let closed = false
+    const stream = await pipes.stream('attach', [id], {
+      onEvent: value => {
+        const event = pipeEvent(value)
+        if (event?.type === 'stdout') handlers.onStdout(event.data)
+        else if (event) handlers.onStderr?.(event.data)
+      },
+      onEnd: reason => { if (!closed) handlers.onExit?.(reason) },
+    }).catch(async (error: unknown) => {
+      await pipes.call('close', [id]).catch(() => undefined)
+      throw error
+    })
+    return {
+      write: async data => { await pipes.call('write', [id, data]) },
+      close: async () => {
+        if (closed) return
+        closed = true
+        // Ending the stream kills the process on the daemon; the call makes sure of it.
+        await stream.close()
+        await pipes.call('close', [id]).catch(() => undefined)
+      },
+    }
+  }
 }
 
 export const name = '@tnega/process-remote'

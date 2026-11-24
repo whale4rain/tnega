@@ -3,7 +3,7 @@ import { defineAgent, HUMAN_COMMUNICATION_PROMPT, type LLMAdapter } from '@tnega
 import type { ModelMessage, SessionMode } from '@tnega/session'
 import { resolve } from 'node:path'
 import type { ToolDefinition } from '@tnega/tools'
-import { connectMcpServers, type McpRuntime } from './mcp.js'
+import { connectMcpServers, type McpLaunchOptions, type McpRuntime } from './mcp.js'
 import { generatePlan } from './plan.js'
 import { skillTools } from './skills.js'
 import { createSlashRegistry, type SlashCommandResult } from './slash.js'
@@ -14,7 +14,8 @@ export interface CodingAgentOptions {
   mode?: SessionMode
   setMode?: (mode: SessionMode) => void | Promise<void>
   skills?: boolean
-  mcp?: boolean
+  /** MCP servers: on this machine (default), off, or started elsewhere (a box). */
+  mcp?: boolean | McpLaunchOptions
   planTools?: boolean
   registerAgent?: boolean
   systemPrompt?: string
@@ -58,7 +59,8 @@ export function createCodingAgentPlugin(
 ): Plugin {
   const cwd = options.cwd
   const skillsEnabled = options.skills ?? true
-  const mcpEnabled = options.mcp ?? true
+  const mcpEnabled = options.mcp !== false
+  const mcpRemote = typeof options.mcp === 'object' ? options.mcp : undefined
   const mode = options.mode
   const setMode = options.setMode
   const registerAgent = options.registerAgent ?? true
@@ -85,7 +87,7 @@ export function createCodingAgentPlugin(
       if (mcpEnabled) {
         mcpRuntime = await connectMcpServers(cwd, () => {
           mcpTools += 1
-        })
+        }, mcpRemote)
         mcpServers = mcpRuntime.surveys.length
         for (const survey of mcpRuntime.surveys) {
           if (survey.status === 'failed') {

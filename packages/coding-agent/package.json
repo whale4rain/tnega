@@ -12,6 +12,7 @@
     "@tnega/core": "workspace:*",
     "@tnega/home": "workspace:*",
     "@tnega/llm": "workspace:*",
+    "@tnega/process": "workspace:*",
     "@tnega/session": "workspace:*",
     "@tnega/tools": "workspace:*"
   }

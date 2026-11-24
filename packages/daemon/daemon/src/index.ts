@@ -19,12 +19,14 @@ import { TerminalManager, type TerminalLocalConfig } from '@tnega/terminal-local
 import { DaemonService } from './serve.js'
 import type { ExposedService, StreamHubOptions } from './services.js'
 import { exposeTerminals } from './terminals.js'
+import { exposePipes } from './pipes.js'
 import { exposeBrowser, type DaemonBrowser } from './browser.js'
 import { exposeComputer, type DaemonComputer, type DaemonComputerGuard } from './computer.js'
 
 export { DaemonService, type ServeOptions } from './serve.js'
 export { StreamHub, type ExposedService, type StreamHubOptions } from './services.js'
 export { exposeTerminals } from './terminals.js'
+export { exposePipes, type PipeEvent } from './pipes.js'
 export { exposeBrowser, type BrowserWatchEvent, type DaemonBrowser } from './browser.js'
 export { exposeComputer, type DaemonComputer, type DaemonComputerGuard } from './computer.js'
 export { assertSecureServerUrl, connectWebSocket, type WebSocketTransportOptions } from './websocket.js'
@@ -63,6 +65,12 @@ export interface StartDaemonOptions {
    * The daemon does not close it.
    */
   computer?: { computer: DaemonComputer; guard?: DaemonComputerGuard }
+  /**
+   * Serve long-lived processes over stdin and stdout (`pipes`, for MCP
+   * servers). They run with no inner sandbox, so only a daemon that is itself
+   * the sandbox (a box) turns this on. Off by default.
+   */
+  pipes?: boolean
   streams?: StreamHubOptions
   /** The protocol version sent in `initialize`; only tests change it. */
   protocolVersion?: number
@@ -115,12 +123,17 @@ export function startDaemon(options: StartDaemonOptions): Daemon {
   if (terminals) services.terminals = exposeTerminals(terminals, workspaces)
   if (options.browser) services.browser = exposeBrowser(options.browser)
   if (options.computer) services.computer = exposeComputer(options.computer.computer, options.computer.guard)
+  const pipes = options.pipes ? exposePipes(workspaces) : undefined
+  if (pipes) services.pipes = pipes.service
   const service = new DaemonService({
     workspaces,
     services,
     ...(options.execution ? { execution: options.execution } : {}),
     ...(options.streams ? { streams: options.streams } : {}),
-    onClose: () => terminals?.dispose(),
+    onClose: () => {
+      pipes?.dispose()
+      terminals?.dispose()
+    },
   })
   const minDelay = options.reconnect === false ? 0 : options.reconnect?.minDelayMs ?? 500
   const maxDelay = options.reconnect === false ? 0 : options.reconnect?.maxDelayMs ?? 30_000
