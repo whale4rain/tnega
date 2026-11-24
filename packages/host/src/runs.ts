@@ -483,8 +483,9 @@ export async function createResidentRuntime(
     },
   }))
   await root.plugin(goalTools)
-  // Subagents run their commands on this host; a run in a box has none yet.
-  if (!box) await root.plugin(subagentLocal, {
+  // Subagents share this scope's tools, so in a box their commands and files are the box's too.
+  // Their Sessions stay with the host's state, keyed by the host folder like the parent's.
+  await root.plugin(subagentLocal, {
     cwd: workspace,
     storageRoot: workspaceSubagentRoot(workspace),
     llm: adapterFromConfig(req.effective, req.apiKey),
@@ -493,7 +494,7 @@ export async function createResidentRuntime(
     allowNetwork: true,
     permission: req.permission,
   })
-  if (!box) await root.plugin(toolSubagent)
+  await root.plugin(toolSubagent)
   for (const plugin of req.hostPlugins ?? []) await root.plugin(plugin)
   return {
     root,

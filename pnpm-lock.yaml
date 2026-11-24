@@ -1186,6 +1186,9 @@ importers:
         specifier: workspace:*
         version: link:../workspace-prompt
     devDependencies:
+      '@tnega/daemon':
+        specifier: workspace:*
+        version: link:../daemon/daemon
       '@tnega/daemon-protocol':
         specifier: workspace:*
         version: link:../daemon/protocol
