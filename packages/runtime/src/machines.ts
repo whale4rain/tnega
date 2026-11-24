@@ -61,14 +61,18 @@ export const machinesCapability: Plugin = {
   },
 }
 
-/** The `MachineSpec` a run in a box gets: its daemon's link, and no secret values in the box. */
-export function boxMachine(lease: MachineLease, hostWorkspace: string): MachineSpec {
-  return boxLinkMachine(lease.link, hostWorkspace)
+/**
+ * The `MachineSpec` a run in a box gets: its daemon's link, and no secret
+ * values in the box. `proxied` names the secrets the egress proxy adds
+ * (`MachinePool.proxiedSecrets`): commands see a placeholder for each.
+ */
+export function boxMachine(lease: MachineLease, hostWorkspace: string, proxied?: () => Promise<readonly string[]>): MachineSpec {
+  return boxLinkMachine(lease.link, hostWorkspace, proxied)
 }
 
 /** A box reached through any link to its daemon (a Project thread's leased link). */
-export function boxLinkMachine(link: DaemonLink, hostWorkspace: string): MachineSpec {
-  return { link, secrets: { withholdOthers: true }, hostWorkspace, isolated: true }
+export function boxLinkMachine(link: DaemonLink, hostWorkspace: string, proxied?: () => Promise<readonly string[]>): MachineSpec {
+  return { link, secrets: { withholdOthers: true, ...(proxied ? { proxied } : {}) }, hostWorkspace, isolated: true }
 }
 
 /** This host's first private IPv4 address: where its boxes reach it. */

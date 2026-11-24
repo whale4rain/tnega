@@ -252,7 +252,13 @@ How it fits together:
   restarted server finds its boxes and their daemons dial back in by
   themselves.
 - No secret values reach a box: keys the egress proxy adds stay with the
-  proxy, and every other remembered secret is withheld from commands.
+  proxy, and every other secret is withheld from commands. For each key the
+  proxy adds (for example `GITHUB_TOKEN`), commands see the variable set to a
+  placeholder (`tnega-egress-adds-GITHUB_TOKEN`), so tools that want it set
+  still start, and the proxy puts the real key on the request. Only
+  remembered secrets reach the proxy; a secret kept for one session stays out
+  of the box. Saving or removing a remembered secret applies to running boxes
+  at once.
 - **GitHub.** Save a `GITHUB_TOKEN` secret (remembered) for the folder. The
   egress proxy then sends it to `github.com` (for `git push`) and
   `api.github.com`, unless the folder's `.tnega/environment.toml` sets keys for

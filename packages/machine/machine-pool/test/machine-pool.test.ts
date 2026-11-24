@@ -246,6 +246,39 @@ describe('machine pool keys', () => {
     expect(credentials[1]?.headers.authorization).toBe('Bearer ghp_example')
     again.release()
   })
+
+  it('gives a key saved while the box runs to its proxy at once, and names what the proxy adds', async () => {
+    const root = createRootCertificate()
+    const secrets: Record<string, string> = { OTHER: 'kept-out' }
+    const pool = await openPool({
+      egress: { listen: { host: '127.0.0.1', port: 0 }, advertise: '10.0.0.5', root, allow: ['registry.npmjs.org'] },
+      rememberedSecrets: async () => ({ ...secrets }),
+    })
+    const lease = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const spec = [...machines.boxes.values()][0]?.spec
+    if (spec?.network.mode !== 'egress') throw new Error('expected an egress box')
+    expect(await pool.proxiedSecrets(dir)).toEqual([])
+
+    secrets.GITHUB_TOKEN = 'ghp_example'
+    await pool.refreshPolicies()
+    expect((pool.egressPolicy(spec.network.egress.token)?.credentials ?? []).map(credential => credential.host)).toEqual(['github.com', 'api.github.com'])
+    // Only names the proxy really adds: never a secret it does not use.
+    expect(await pool.proxiedSecrets(dir)).toEqual(['GITHUB_TOKEN'])
+
+    delete secrets.GITHUB_TOKEN
+    await pool.refreshPolicies()
+    expect(pool.egressPolicy(spec.network.egress.token)?.credentials).toEqual([])
+    lease.release()
+    await pool.stop(lease.machineId)
+    // A stopped box gets no policy back.
+    await pool.refreshPolicies()
+    expect(pool.egressPolicy(spec.network.egress.token)).toBeUndefined()
+  })
+
+  it('names no proxied secrets when boxes have no egress proxy', async () => {
+    const pool = await openPool({ rememberedSecrets: async () => ({ GITHUB_TOKEN: 'ghp_example' }) })
+    expect(await pool.proxiedSecrets(dir)).toEqual([])
+  })
 })
 
 describe('machine pool scopes', () => {

@@ -149,7 +149,7 @@ function threadBoxes(root: Context, membersRoot: string): NonNullable<ServerCont
           throw new Error(`the box for thread ${thread.id} serves no workspace`)
         }
         return {
-          machine: boxLinkMachine(link, folder),
+          machine: boxLinkMachine(link, folder, () => pool.proxiedSecrets(folder)),
           cwd: BOX_WORKSPACE,
           close: () => link.close(),
           // git and gh for the thread's branch run in its box: the box is the sandbox, keys come from the egress proxy.
@@ -186,7 +186,7 @@ function boxRuns(root: Context): NonNullable<ServerContext['machineFor']> {
     let id = ids.get(lease.link)
     if (id === undefined) ids.set(lease.link, id = ++next)
     return {
-      machine: boxMachine(lease, workspace),
+      machine: boxMachine(lease, workspace, () => pool.proxiedSecrets(workspace)),
       cwd: lease.workspacePath,
       identity: `${lease.machineId}:${id}`,
       release: lease.release,
@@ -249,6 +249,11 @@ export async function startWebServer(
       ...options.machines,
       pool: { rememberedSecrets: (workspace: string) => secretVault.vault.remembered(threadCloneOwner(workspace) ?? workspace), ...options.machines.pool },
     })
+    // A key saved or removed while a box runs reaches its proxy now, not at the next resume.
+    const pool = root.get('machinePool')
+    root.fiber.effect(() => secretVault.vault.onRememberedChange(() => {
+      void pool.refreshPolicies().catch((error: unknown) => console.warn('[tnega] could not refresh box keys:', error))
+    }), 'refresh box keys')
   }
   await root.plugin(stateCapability, state)
   // Effects and schedules live with the state: on Postgres, routines run with no window open.

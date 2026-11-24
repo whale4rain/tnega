@@ -7,7 +7,7 @@ import type { AccountService } from '@tnega/accounts'
 import type { DaemonLink } from '@tnega/daemon-protocol'
 import type { DaemonRegistry } from '@tnega/daemons'
 import { startEgressProxy, type EgressPolicy, type EgressProxy, type KeyPairPem } from '@tnega/egress-proxy'
-import { DEFAULT_SETUP_HOSTS, ENVIRONMENT_FILE, GITHUB_TOKEN_SECRET, egressCredentials, githubCredentials, parseEnvironment, type Environment } from '@tnega/environment'
+import { DEFAULT_SETUP_HOSTS, ENVIRONMENT_FILE, GITHUB_TOKEN_SECRET, egressCredentials, githubCredentials, parseEnvironment, proxiedSecretNames, type Environment } from '@tnega/environment'
 import { MachineError, type BoxIsolation, type BoxNetwork, type BoxResources, type BoxSpec, type MachineService } from '@tnega/machine'
 import { millis, optionalText, poolClient, text, type SqlClient, type SqlQueryable } from './sql.js'
 import { LeasedLink } from './leased-link.js'
@@ -232,23 +232,63 @@ export class MachinePool extends Service {
     return raw === undefined ? undefined : parseEnvironment(raw)
   }
 
+  /** The keys the egress proxy adds for a workspace's boxes, and the secret names they come from. */
+  private async credentialsFor(workspace: string, environment: Environment | undefined): Promise<{ credentials: NonNullable<EgressPolicy['credentials']>; names: string[] }> {
+    if (!this.config.rememberedSecrets) return { credentials: [], names: [] }
+    const secrets = await this.config.rememberedSecrets(workspace)
+    let credentials: NonNullable<EgressPolicy['credentials']> = []
+    const names = new Set<string>()
+    if (environment?.network.credentials.length) {
+      const resolved = egressCredentials(environment, Object.entries(secrets).map(([name, value]) => ({ name, value })))
+      credentials = resolved.credentials
+      const missing = new Set(resolved.missing)
+      for (const name of proxiedSecretNames(environment)) if (!missing.has(name)) names.add(name)
+    }
+    // A remembered GITHUB_TOKEN lets git and gh in the box reach GitHub, unless the environment says otherwise for that host.
+    const token = secrets[GITHUB_TOKEN_SECRET]
+    if (token) {
+      const own = new Set(credentials.map(credential => credential.host))
+      const github = githubCredentials(token).filter(credential => !own.has(credential.host))
+      credentials = [...credentials, ...github]
+      if (github.length) names.add(GITHUB_TOKEN_SECRET)
+    }
+    return { credentials, names: [...names].sort() }
+  }
+
   private async policyFor(row: Pick<MachineRow, 'id' | 'workspace'>): Promise<EgressPolicy> {
     const environment = await this.environment(row.workspace).catch(() => undefined)
     const allow = [...new Set([...(this.config.egress?.allow ?? DEFAULT_SETUP_HOSTS), ...environment?.network.allow ?? []])]
-    let credentials: NonNullable<EgressPolicy['credentials']> = []
-    if (this.config.rememberedSecrets) {
-      const secrets = await this.config.rememberedSecrets(row.workspace)
-      if (environment?.network.credentials.length) {
-        credentials = egressCredentials(environment, Object.entries(secrets).map(([name, value]) => ({ name, value }))).credentials
-      }
-      // A remembered GITHUB_TOKEN lets git and gh in the box reach GitHub, unless the environment says otherwise for that host.
-      const token = secrets[GITHUB_TOKEN_SECRET]
-      if (token) {
-        const own = new Set(credentials.map(credential => credential.host))
-        credentials = [...credentials, ...githubCredentials(token).filter(credential => !own.has(credential.host))]
-      }
-    }
+    const { credentials } = await this.credentialsFor(row.workspace, environment)
     return { name: `box ${row.id.slice(0, 8)}`, allow, credentials }
+  }
+
+  /**
+   * The secrets the egress proxy adds to a workspace's box requests. Commands
+   * in the box get a placeholder for each in place of the value, so a tool
+   * that wants the variable set (`gh`, an SDK) starts, and the proxy puts
+   * the real key on the request. Empty when the box has no egress proxy.
+   */
+  async proxiedSecrets(workspace: string): Promise<string[]> {
+    if (this.network !== 'egress') return []
+    const environment = await this.environment(workspace).catch(() => undefined)
+    return (await this.credentialsFor(workspace, environment)).names
+  }
+
+  /**
+   * Read the keys of every box that may run again, so a secret saved or
+   * removed while a box runs reaches its proxy at once instead of at the next
+   * resume. Cheap: a few boxes per host.
+   */
+  async refreshPolicies(): Promise<void> {
+    if (this.network !== 'egress') return
+    const { rows } = await this.sql.query(`select ${COLUMNS} from machine where state <> 'cold' and egress_hash is not null`)
+    for (const raw of rows) {
+      const row = rowFrom(raw)
+      if (!row.egressHash || !this.policies.has(row.egressHash)) continue
+      const policy = await this.policyFor(row)
+      // A box stopped meanwhile has no policy left to replace.
+      if (this.policies.has(row.egressHash)) this.policies.set(row.egressHash, policy)
+    }
   }
 
   /** Load the policies of boxes that may still run, and note boxes that stopped while the server was away. */
