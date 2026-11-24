@@ -67,7 +67,9 @@ export function createCodingAgentPlugin(
 
   return {
     name: 'coding-agent',
-    inject: ['session', 'tools'],
+    // Only tools: a host that keeps its Agents in a registry (the resident runtime) has no
+    // `session` on the scope this mounts on, and waiting for one kept MCP servers from ever starting.
+    inject: ['tools'],
     apply: async (ctx: Context) => {
       const service = dynamic(ctx)
       const tools: ToolDefinition[] = []

@@ -146,8 +146,9 @@ export async function handleRun(
         processes: processesFor(context, workspace),
       },
       plugins: [
-        // In a box, MCP servers run in the box (none when its image cannot run them).
-        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false, ...(box ? { mcp: boxMcp(box.machine, box.cwd) ?? false } : {}) })] : []),
+        // In a box, MCP servers run in the box (none when its image cannot run them), and no
+        // skill tools read this host's disk.
+        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false, ...(box ? { mcp: boxMcp(box.machine, box.cwd) ?? false, skills: false } : {}) })] : []),
         ...hostPlugins(context, workspace),
       ],
     })
@@ -440,8 +441,9 @@ export async function createResidentRuntime(
       cwd: workspace,
       mode: 'auto',
       registerAgent: false,
-      // In a box, MCP servers run in the box (none when its image cannot run them).
-      ...(box ? { mcp: boxMcp(box.machine, box.cwd) ?? false } : {}),
+      // In a box, MCP servers run in the box (none when its image cannot run them), and no
+      // skill tools read this host's disk.
+      ...(box ? { mcp: boxMcp(box.machine, box.cwd) ?? false, skills: false } : {}),
     }))
   }
   await root.plugin(agents)

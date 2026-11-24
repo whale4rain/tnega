@@ -1,6 +1,7 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
 import { agents, type AgentRegistry, type LLMAdapter } from '@tnega/agent'
 import { ApprovalBroker } from '@tnega/approval-host'
@@ -13,6 +14,9 @@ import { sessionStoreJsonl } from '@tnega/session-store-jsonl'
 import { LocalSubagentService } from '@tnega/subagent-local'
 import { createResidentRuntime } from '../src/runs.js'
 import { sessionModelRoute } from '../src/support.js'
+
+// The coding package's line-based MCP server with one `echo` tool.
+const fixture = fileURLToPath(new URL('../../coding-agent/test/fixtures/mcp-server.mjs', import.meta.url))
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => {
@@ -37,7 +41,8 @@ async function tempDir(prefix: string): Promise<string> {
 async function loopbackBox(workspace: string): Promise<{ link: DaemonLink; calls: string[] }> {
   const [runtimeSide, daemonSide] = memoryTransportPair()
   const accepted = acceptDaemon(runtimeSide, { heartbeat: false })
-  const daemon = startDaemon({ connect: () => daemonSide, workspaces: [{ path: workspace }], reconnect: false, heartbeat: false })
+  // A box's daemon serves pipes (its start script passes --pipes).
+  const daemon = startDaemon({ connect: () => daemonSide, workspaces: [{ path: workspace }], reconnect: false, heartbeat: false, terminals: false, pipes: true })
   const link = await accepted
   await daemon.ready
   cleanups.push(async () => { await daemon.close(); link.close() })
@@ -51,10 +56,12 @@ async function loopbackBox(workspace: string): Promise<{ link: DaemonLink; calls
   return { link, calls }
 }
 
-it('gives a run in a box its subagent tools', async () => {
+it('gives a coding run in a box its subagent tools and the box\'s MCP servers, and no host skill tools', async () => {
   const box = await tempDir('tnega-box-')
   const host = await tempDir('tnega-host-')
-  const { link } = await loopbackBox(box)
+  await mkdir(join(box, '.tnega'), { recursive: true })
+  await writeFile(join(box, '.tnega', 'mcp.json'), JSON.stringify({ mcpServers: { fixture: { command: process.execPath, args: [fixture] } } }))
+  const { link, calls } = await loopbackBox(box)
   const stores = new Context()
   await stores.plugin(sessionStoreJsonl)
   const sessions = stores.get('sessionStore')
@@ -64,7 +71,7 @@ it('gives a run in a box its subagent tools', async () => {
     permission: 'workspace-write',
     sessionId: 'session',
     approvals: new ApprovalBroker(),
-    agentType: 'general',
+    agentType: 'coding',
     goalMode: false,
     effective: { apiKeySet: true, modelId: 'model', baseUrl: 'https://llm.invalid', model: 'model', vision: false },
     apiKey: 'key',
@@ -76,6 +83,10 @@ it('gives a run in a box its subagent tools', async () => {
   const names = runtime.root.get('tools').list().map(tool => tool.schema.name)
   expect(names).toContain('spawn_subagent')
   expect(names).toContain('read_subagent_result')
+  // The MCP server came from the box's mcp.json and runs on its daemon.
+  expect(names).toContain('mcp__fixture__echo')
+  expect(calls).toContain('stream/open')
+  expect(names).not.toContain('skill')
 })
 
 it('runs a subagent\'s commands on the box its parent works in', async () => {
