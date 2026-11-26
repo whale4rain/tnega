@@ -1,15 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- The Tnega Swiss sliced cloud: engineered matte charcoal horizontal bars on a matte off-white squircle tile. -->
+  <!-- The Tnega Swiss cloud, cut once across (a taller dome over a lower band), in matte charcoal on a matte off-white squircle tile. -->
   <rect x="2" y="2" width="60" height="60" rx="15" fill="#f3f3f1" stroke="#dcdcd8" stroke-width="1"/>
   <defs>
     <mask id="cloud-bars">
       <path fill="#ffffff" d="M16.5 50 A9.5 9.5 0 0 1 12.99 31.67 A14 14 0 0 1 38.32 20.49 A10.5 10.5 0 0 1 51.88 32.07 A9.5 9.5 0 0 1 47.5 50 Z"/>
       <g fill="#000000">
-        <rect x="0" y="18.5" width="64" height="1.85"/>
-        <rect x="0" y="24.8" width="64" height="1.85"/>
-        <rect x="0" y="31.1" width="64" height="1.85"/>
-        <rect x="0" y="37.4" width="64" height="1.85"/>
-        <rect x="0" y="43.7" width="64" height="1.85"/>
+        <rect x="0" y="33.2" width="64" height="4"/>
       </g>
     </mask>
   </defs>

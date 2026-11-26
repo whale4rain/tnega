@@ -15,7 +15,7 @@ import {
 import { useId, type CSSProperties } from 'react'
 import { relativeTime } from '../lib/hooks'
 import type { AgentType, SessionSummary } from '../lib/types'
-import { BRAND_CLOUD, BRAND_CLOUD_CUTS_LARGE } from '../lib/avatar'
+import { BRAND_CLOUD, BRAND_CLOUD_CUTS } from '../lib/avatar'
 import { recentSessions, welcomeGreeting } from '../lib/welcome'
 import { PenMark, type PenKind } from './PenMark'
 
@@ -65,8 +65,8 @@ export function WelcomeUmbrella() {
         <defs>
           <mask id={mask}>
             <path d={BRAND_CLOUD} fill="white" />
-            {BRAND_CLOUD_CUTS_LARGE.ys.map(y => (
-              <rect key={y} x="0" y={y} width="64" height={BRAND_CLOUD_CUTS_LARGE.height} fill="black" />
+            {BRAND_CLOUD_CUTS.ys.map(y => (
+              <rect key={y} x="0" y={y} width="64" height={BRAND_CLOUD_CUTS.height} fill="black" />
             ))}
           </mask>
         </defs>

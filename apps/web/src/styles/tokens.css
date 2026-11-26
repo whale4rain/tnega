@@ -21,11 +21,13 @@
   --display-weight: 700;
   --display-tracking: -0.025em;
 
-  --text-xs: 11.5px;
-  --text-sm: 12.5px;
-  --text-md: 13.5px;
-  --text-lg: 15px;
-  --text-xl: 19px;
+  /* 2026-11-24: one step up from 11.5 / 12.5 / 13.5 / 15. Next to 34–48 px controls, 13.5 px chrome
+     text read as small type in big boxes on a real desk (umbrella/foundations.md, Type). */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14.5px;
+  --text-lg: 16px;
+  --text-xl: 20px;
   --text-2xl: 26px;
   /* The new-session greeting only: a few words of welcome, in the display font. */
   --text-3xl: 34px;
@@ -61,29 +63,30 @@
    */
   --header-h: 32px;
   /* Umbrella: the gap between the window ground and the panels floating on it. */
-  --panel-gap: 10px;
+  --panel-gap: 12px;
   --toolbar-h: 28px;
   --control-lg: 32px;
   --control: 26px;
   --control-sm: 22px;
   --row-h: 26px;
   /* Umbrella controls (docs/design/umbrella/controls.md): pill buttons, sunken fields, switches. */
-  --button-h: 38px;
-  --button-h-sm: 32px;
-  --button-h-lg: 44px;
-  --field-h: 40px;
-  --nav-pill-h: 34px;
+  /* 2026-11-24: controls are sized to the text they hold, about 2.3x its size, not to a touch target. */
+  --button-h: 34px;
+  --button-h-sm: 30px;
+  --button-h-lg: 40px;
+  --field-h: 36px;
+  --nav-pill-h: 32px;
   /* The Workbench tab row (umbrella/work.md). */
-  --tabs-h: 40px;
-  --menu-item-h: 36px;
-  /* The composer pill (umbrella/composer.md): 52 tall at rest, round 40 buttons inside a 6 inset, so 26 = 20 + 6. */
-  --composer-h: 52px;
-  --composer-button: 40px;
-  --radius-composer: 26px;
+  --tabs-h: 38px;
+  --menu-item-h: 34px;
+  /* The composer pill (umbrella/composer.md): 48 tall at rest, round 36 buttons inside a 6 inset, so 24 = 18 + 6. */
+  --composer-h: 48px;
+  --composer-button: 36px;
+  --radius-composer: 24px;
   --icon: 14px;
   --icon-sm: 12px;
   /* The sidebar is read at a glance, so its rows and icons are a size up from the rest of the chrome. */
-  --nav-row-h: 36px;
+  --nav-row-h: 34px;
   --nav-icon: 16px;
 
   --sidebar-width: 264px;
@@ -169,10 +172,18 @@
   --syntax-type: #9a3a63;
   --syntax-property: #1b5f75;
 
-  /* Umbrella: surfaces in the page never cast shadows; only popovers (md) and dialogs (lg) do. */
-  --shadow-sm: none;
-  --shadow-md: 0 12px 32px -12px rgba(14, 14, 14, 0.18);
-  --shadow-lg: 0 24px 64px -20px rgba(14, 14, 14, 0.28);
+  /*
+   * Elevation (umbrella/foundations.md, 2026-11-24). Each step is a 1px hairline ring plus one or two
+   * soft shadows, so a raised shape has an edge you can see without an outline border.
+   * xs: small raised controls · sm: resting cards · sm-hover: a card or control under the pointer ·
+   * panel: the floating panels · md: popovers · lg: dialogs.
+   */
+  --shadow-xs: 0 0 0 1px rgba(14, 14, 14, 0.05), 0 1px 2px rgba(14, 14, 14, 0.06);
+  --shadow-sm: 0 0 0 1px rgba(14, 14, 14, 0.045), 0 1px 2px rgba(14, 14, 14, 0.04), 0 4px 14px -6px rgba(14, 14, 14, 0.1);
+  --shadow-sm-hover: 0 0 0 1px rgba(14, 14, 14, 0.06), 0 2px 4px rgba(14, 14, 14, 0.05), 0 12px 28px -10px rgba(14, 14, 14, 0.16);
+  --shadow-panel: 0 0 0 1px rgba(14, 14, 14, 0.04), 0 1px 3px rgba(14, 14, 14, 0.05), 0 18px 40px -22px rgba(14, 14, 14, 0.16);
+  --shadow-md: 0 0 0 1px rgba(14, 14, 14, 0.06), 0 4px 12px -2px rgba(14, 14, 14, 0.07), 0 20px 44px -14px rgba(14, 14, 14, 0.22);
+  --shadow-lg: 0 0 0 1px rgba(14, 14, 14, 0.06), 0 10px 24px -8px rgba(14, 14, 14, 0.12), 0 36px 80px -24px rgba(14, 14, 14, 0.34);
   --disc: #b6b6b6;
   --pen: var(--text);
   --scrim: rgba(18, 26, 40, 0.3);
@@ -251,9 +262,12 @@
   --syntax-type: #f2a0c0;
   --syntax-property: #7fd3e6;
 
-  --shadow-sm: none;
-  --shadow-md: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 24px 64px -20px rgba(0, 0, 0, 0.75);
+  --shadow-xs: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.055), 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px -6px rgba(0, 0, 0, 0.55);
+  --shadow-sm-hover: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 2px 4px rgba(0, 0, 0, 0.45), 0 14px 32px -10px rgba(0, 0, 0, 0.65);
+  --shadow-panel: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 3px rgba(0, 0, 0, 0.45), 0 20px 48px -20px rgba(0, 0, 0, 0.7);
+  --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 22px 52px -14px rgba(0, 0, 0, 0.75);
+  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 10px 24px -8px rgba(0, 0, 0, 0.5), 0 36px 88px -24px rgba(0, 0, 0, 0.85);
   --disc: #3a3a3d;
   --pen: var(--text);
   --scrim: rgba(4, 6, 10, 0.62);
@@ -743,25 +757,26 @@
   --control-sm: 26px;
   --row-h: 32px;
   --icon: 15px;
-  --nav-row-h: 40px;
+  --nav-row-h: 38px;
   --nav-icon: 17px;
 }
 
 [data-text-size="small"] {
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-lg: 14px;
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-md: 13.5px;
+  --text-lg: 15px;
+  --text-xl: 19px;
   --text-3xl: 32px;
 }
 
 [data-text-size="large"] {
-  --text-xs: 12.5px;
-  --text-sm: 13.5px;
-  --text-md: 15px;
-  --text-lg: 16.5px;
-  --text-xl: 21px;
-  --text-2xl: 28.5px;
+  --text-xs: 13px;
+  --text-sm: 14px;
+  --text-md: 15.5px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+  --text-2xl: 29px;
   --text-3xl: 37px;
 }
 

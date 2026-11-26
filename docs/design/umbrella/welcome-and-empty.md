@@ -7,8 +7,8 @@ The first screen should already say whose turn it is.
 1. The sliced brand cloud on its raised squircle tile (64).
 2. The greeting on one line in 30–34/700 display: "Good afternoon. What are we building?" The second sentence is `--text-2`.
 3. The composer pill, 620 wide.
-4. Starters as sunken pills (34, 13.5): Map the codebase, Hunt a bug, Strengthen tests, Review recent work.
-5. "Pick up where you left off": up to three rows (40, radius 12) with their pen mark, title and either "waiting on you" or when. A session waiting on you comes first, carries the `you` mark and is the only row in full ink; a running one has the `working` mark; the rest the `idle` ring (a session summary does not say whether its last run went well, so no tick).
+4. Starters as sunken pills (34, 13.5, 10 apart, 20 below the composer): Map the codebase, Hunt a bug, Strengthen tests, Review recent work.
+5. "Pick up where you left off" (48 below the starters; its label a quiet 12.5/600 `--text-3`): up to three rows (40, radius 12) with their pen mark, title and either "waiting on you" or when. A session waiting on you comes first, carries the `you` mark and is the only row in full ink; a running one has the `working` mark; the rest the `idle` ring (a session summary does not say whether its last run went well, so no tick).
 
 Notices (such as the cua-driver hint) sit above the greeting as one-line notice cards ([asks.md](asks.md)), never as a grey slab.
 

@@ -47,9 +47,11 @@ export const ACCENT = 'accent'
  * asymmetric cumulus sliced into uniform horizontal bars.
  */
 export const BRAND_CLOUD = 'M16.5 50 A9.5 9.5 0 0 1 12.99 31.67 A14 14 0 0 1 38.32 20.49 A10.5 10.5 0 0 1 51.88 32.07 A9.5 9.5 0 0 1 47.5 50 Z'
-/** Horizontal cuts for 6 bars at 32px+ (Welcome hero, app icon), and 5 bolder bars below 32px. */
-export const BRAND_CLOUD_CUTS_LARGE = { height: 1.85, ys: [18.5, 24.8, 31.1, 37.4, 43.7] as const }
-export const BRAND_CLOUD_CUTS_SMALL = { height: 2.5, ys: [19.2, 26.9, 34.6, 42.3] as const }
+/**
+ * One horizontal cut (2026-11-24): a taller dome over a lower band. The same cut at every size, so the
+ * sidebar, avatar, favicon and installer show one mark; six thin cuts closed up below 32px.
+ */
+export const BRAND_CLOUD_CUTS = { height: 4, ys: [33.2] as const }
 
 export const SHAPES: readonly Shape[] = ['circle', 'rounded', 'tilted', 'gumdrop', 'cloud', 'drop']
 

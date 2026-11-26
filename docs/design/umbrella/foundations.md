@@ -27,7 +27,7 @@ Rules:
 | `--text` | `#0e0e0e` | Reading text, titles, the one thing that needs you |
 | `--text-2` | `#3a3a3c` | Secondary lines (what a thread is doing, descriptions) |
 | `--text-3` | `#545457` | Meta: times, counts, hints. Still ≥ 4.5:1 on every tier |
-| `--accent` | `#0e0e0e` | Ink fills: primary buttons, your message, the send button, switches when on |
+| `--accent` | `#0e0e0e` | Ink fills: primary buttons, the send button, an open toggle, switches when on |
 | `--text-inverse` | `#f7f7f7` | Text on ink |
 | `--danger` | `#a62b25` | The only colour that is not grey: failure marks, delete confirmations, field errors |
 
@@ -41,13 +41,15 @@ Geist for UI, Noto Sans SC for Chinese, JetBrains Mono for code. There is no ser
 
 | Token | Size | Line | Use |
 | --- | --- | --- | --- |
-| `--text-xs` | 11.5 | 16 | Kickers, counts in chips |
-| `--text-sm` | 12.5 | 18 | Meta, help text, times |
-| `--text-md` | 13.5 | 20 | Controls, sidebar rows, menus |
-| `--text-lg` | 15 | 24 | **Reading text**: messages, answers, asks |
-| `--text-xl` | 19 | 26 | Panel titles (Work, Settings) |
+| `--text-xs` | 12 | 16 | Kickers, counts in chips |
+| `--text-sm` | 13 | 18 | Meta, help text, times, group labels |
+| `--text-md` | 14.5 | 22 | Controls, sidebar rows, menus |
+| `--text-lg` | 16 | 24 | **Reading text**: messages, answers, asks |
+| `--text-xl` | 20 | 26 | Panel titles (Work, Settings) |
 | `--text-2xl` | 26 | 32 | Dialog and page titles |
 | `--text-3xl` | 34 | 40 | The welcome greeting |
+
+**Size controls to their text (2026-11-24).** The ramp went one step up (it was 11.5 / 12.5 / 13.5 / 15 / 19) and controls came down, because 13.5 px words in 38–52 px boxes looked like small type in big boxes on a real desk, next to apps such as Claude. A control is about 2.3× its text: rows and buttons 34 (`--nav-row-h`, `--button-h`), fields 36, menu items 34, the composer 48 with 36 round buttons, the header 44. The Small text size in Appearance is the old ramp.
 
 Weights: 400 body, 500 controls, 600 titles and the thing that needs you, 700 display. Nothing in all caps except a kicker (11.5, 700, +0.09em), and kickers appear only in design docs, not in the app.
 
@@ -55,9 +57,13 @@ Weights: 400 body, 500 controls, 600 titles and the thing that needs you, 700 di
 
 A 4 px grid. The values that recur:
 
-- **10**: the gap between the ground and a floating panel (`--panel-gap`), on every side.
+- **12**: the gap between the ground and a floating panel (`--panel-gap`), on every side.
 - **6**: the inset inside the Workbench frame, so the cards inside are concentric (22 − 6 = 16).
-- **12 / 16**: the gap between parts of a turn / between turns.
+- **12 / 28**: the gap between parts of a turn / between turns.
+- **8**: between cards or work rows in a list. Rows never touch; 4 reads as one cramped block.
+- **18–32**: between groups (sidebar sections 18, Board groups 32, the welcome page's recent list 48 below the starters).
+
+**Breathing room (2026-11-24).** When a screen feels crowded, add space between groups before shrinking anything, and quiet the labels before the content: group labels are 12.5/600 `--text-3`, the rows under them carry the ink. Ink fills are for the one action inside a view (Send, Start, an open toggle); chrome around it (New session, your own message) stays a tone step, so a page has at most one or two dark shapes. Many black slabs read as cheap, not bold.
 - **28**: the conversation's side padding at full width.
 - **680**: the conversation column (`--reading-width`).
 
@@ -69,7 +75,18 @@ Nested radii are concentric: inner = outer − inset. Panels 22, cards 16 (14 fo
 
 ## Elevation
 
-`--shadow-sm` is `none`. Nothing on the page has a shadow. `--shadow-md` is only for menus, popovers and tooltips. `--shadow-lg` is only for dialogs and sheets.
+Changed 2026-11-24: a page with no shadows at all read as flat and cheap, so Umbrella now has a soft elevation scale on top of its tone steps. Every step is a 1 px hairline ring (5–8% ink; in dark mode 5–8% white) plus one or two soft, wide shadows. It gives a raised shape a visible edge without an outline border, and it never replaces the tone steps.
+
+| Token | Use |
+| --- | --- |
+| `--shadow-xs` | Small raised controls: New session, the open session row, the selected segment, the open Workbench pill and tab, primary and send buttons, starters, file chips, the switch knob, Workbench cards. |
+| `--shadow-sm` | Resting cards: the composer, notices, approval and question cards, result cards, settings cards, the welcome brand tile. |
+| `--shadow-sm-hover` | Something under the pointer or being typed in: a hovered card or starter, the focused composer, a hovered New session. |
+| `--shadow-panel` | The floating panels: the conversation and the Workbench frame. |
+| `--shadow-md` | Menus, popovers, tooltips and the jump-to-latest button. |
+| `--shadow-lg` | Dialogs and sheets. |
+
+Still flat: the ground, rows in a list (until open or hovered), your message bubble, fields (sunken), chips and labels. Code blocks are inset: `--code-bg` with a 1 px `--code-border` ring. The shadows are defined once for light and once for dark in `tokens.css`, so every palette gets them. The list of which part gets which step is in [session-inventory.md](session-inventory.md).
 
 ## Focus
 
