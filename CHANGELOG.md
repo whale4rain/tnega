@@ -16,6 +16,7 @@ pull requests and moves entries into a version only when it ships.
 
 | Version | Audited range | Commits |
 | --- | --- | ---: |
+| 0.5.8-beta.2 | [`v0.5.8-beta.1...v0.5.8-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.8-beta.1...v0.5.8-beta.2) | 20 |
 | 0.5.8-beta.1 | [`v0.5.7...v0.5.8-beta.1`](https://github.com/whale4rain/tnega/compare/v0.5.7...v0.5.8-beta.1) | 50 |
 | 0.5.7 | [`v0.5.6...v0.5.7`](https://github.com/whale4rain/tnega/compare/v0.5.6...v0.5.7) | 95 |
 | 0.5.7-beta.2 | [`v0.5.7-beta.1...v0.5.7-beta.2`](https://github.com/whale4rain/tnega/compare/v0.5.7-beta.1...v0.5.7-beta.2) | 17 |
@@ -73,6 +74,27 @@ Use `git log <previous-actual-tag>..<release-tag>` for the full changelog audit;
 compare links provide a convenient browser view of the boundaries.
 
 ## Unreleased
+
+## [0.5.8-beta.2](https://github.com/whale4rain/tnega/releases/tag/v0.5.8-beta.2) — 2026-11-26
+
+### Features
+
+- **Subagents in boxes.** Runs in a box now mount `spawn_subagent` and the other subagent tools: subagents share the parent's tools so their commands and files run in the box while their Sessions stay on the host, and the box lease stays held until all running subagents settle.
+- **MCP servers in boxes.** `tnega daemon --pipes` (passed by the box start script) serves long-lived stdin/stdout processes inside a box, with a 30-second cleanup timer for unattached processes. Coding sessions in a box read the box's `.tnega/mcp.json`, start MCP servers there with egress proxy placeholders and bounded, prefixed stderr logs, and omit host-disk skill tools. Older box images without `--pipes` continue to run without MCP.
+- **Egress proxy key placeholders and live refresh.** Box commands, Project thread boxes and box MCP servers now receive `tnega-egress-adds-NAME` placeholders for keys the egress proxy actually injects. Saving or removing a remembered secret refreshes every running box's proxy policy immediately (serialized so stale refreshes never write back a removed key).
+- **E2B Workbench.** On servers whose boxes keep their own volume, the Workbench file tree, editor, uploads, Changes (with byte-preserving `git show`) and `@` file search operate on the signed-in person's running box without waking sleeping boxes (`503` while asleep, `413` above the 16 MiB daemon message limit).
+- **Umbrella layout, elevation and brand polish.** Added more breathing room with fewer heavy ink surfaces, a soft elevation scale on session screens, controls sized to their text one step up the type ramp, and a single-cut sliced cloud mark across Web, favicon and desktop icons.
+
+### Fixes
+
+- Fixed resident coding sessions never mounting the coding plugin (it previously injected `session`, which resident runtime roots do not provide), restoring MCP server startup on both host and boxes. Broken `.tnega/mcp.json` files or failing servers now report as failed `/mcp` surveys without blocking session startup or closing healthy servers, and plugin disposal awaits MCP teardown.
+- Smoothed Web reply streaming to render at an even pace without flashing half-written Markdown, and replaced the Workbench toggle with a clear panel icon and label.
+- Preserved the Umbrella floating shell and 44px brand row on macOS desktop builds, and made the desktop updater fall back to the GitHub feed when `app-update.yml` is absent.
+
+### Other
+
+- Refreshed README, Chinese README, Umbrella component specifications (including `session-inventory.md`), screenshots, `docs/guide/server.md` and daemon documentation.
+- Box upgrade note: rebuild the E2B template (`pnpm try:boxes template`) or gVisor rootfs (`deploy/gvisor/build-rootfs.sh`) to enable MCP servers in boxes; older box images continue to run without MCP until rebuilt.
 
 ## [0.5.8-beta.1](https://github.com/whale4rain/tnega/releases/tag/v0.5.8-beta.1) — 2026-11-23
 
