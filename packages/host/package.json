@@ -56,6 +56,7 @@
     "@tnega/workspace-prompt": "workspace:*"
   },
   "devDependencies": {
+    "@tnega/daemon": "workspace:*",
     "@tnega/daemon-protocol": "workspace:*"
   }
 }

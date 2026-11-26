@@ -246,6 +246,72 @@ describe('machine pool keys', () => {
     expect(credentials[1]?.headers.authorization).toBe('Bearer ghp_example')
     again.release()
   })
+
+  it('gives a key saved while the box runs to its proxy at once, and names what the proxy adds', async () => {
+    const root = createRootCertificate()
+    const secrets: Record<string, string> = { OTHER: 'kept-out' }
+    const pool = await openPool({
+      egress: { listen: { host: '127.0.0.1', port: 0 }, advertise: '10.0.0.5', root, allow: ['registry.npmjs.org'] },
+      rememberedSecrets: async () => ({ ...secrets }),
+    })
+    const lease = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const spec = [...machines.boxes.values()][0]?.spec
+    if (spec?.network.mode !== 'egress') throw new Error('expected an egress box')
+    expect(await pool.proxiedSecrets(dir)).toEqual([])
+
+    secrets.GITHUB_TOKEN = 'ghp_example'
+    await pool.refreshPolicies()
+    expect((pool.egressPolicy(spec.network.egress.token)?.credentials ?? []).map(credential => credential.host)).toEqual(['github.com', 'api.github.com'])
+    // Only names the proxy really adds: never a secret it does not use.
+    expect(await pool.proxiedSecrets(dir)).toEqual(['GITHUB_TOKEN'])
+
+    delete secrets.GITHUB_TOKEN
+    await pool.refreshPolicies()
+    expect(pool.egressPolicy(spec.network.egress.token)?.credentials).toEqual([])
+    lease.release()
+    await pool.stop(lease.machineId)
+    // A stopped box gets no policy back.
+    await pool.refreshPolicies()
+    expect(pool.egressPolicy(spec.network.egress.token)).toBeUndefined()
+  })
+
+  it('never lets a slow refresh put back a key a later one removed', async () => {
+    const root = createRootCertificate()
+    const secrets: Record<string, string> = {}
+    let hold: Promise<void> | undefined
+    const pool = await openPool({
+      egress: { listen: { host: '127.0.0.1', port: 0 }, advertise: '10.0.0.5', root, allow: ['registry.npmjs.org'] },
+      rememberedSecrets: async () => {
+        const seen = { ...secrets }
+        if (hold) await hold
+        return seen
+      },
+    })
+    const lease = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const spec = [...machines.boxes.values()][0]?.spec
+    if (spec?.network.mode !== 'egress') throw new Error('expected an egress box')
+
+    // The first refresh reads the store while the key is saved, then stalls.
+    secrets.GITHUB_TOKEN = 'ghp_example'
+    let release: () => void = () => undefined
+    hold = new Promise(resolve => { release = resolve })
+    const slow = pool.refreshPolicies()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    // The key is removed and a second refresh asked for while the first stalls.
+    delete secrets.GITHUB_TOKEN
+    hold = undefined
+    const later = pool.refreshPolicies()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    release()
+    await Promise.all([slow, later])
+    expect(pool.egressPolicy(spec.network.egress.token)?.credentials).toEqual([])
+    lease.release()
+  })
+
+  it('names no proxied secrets when boxes have no egress proxy', async () => {
+    const pool = await openPool({ rememberedSecrets: async () => ({ GITHUB_TOKEN: 'ghp_example' }) })
+    expect(await pool.proxiedSecrets(dir)).toEqual([])
+  })
 })
 
 describe('machine pool scopes', () => {
@@ -299,5 +365,27 @@ describe('machine pool after a restart', () => {
     await pool.restore()
     await new Promise(resolve => setTimeout(resolve, 50))
     expect((await pool.row(lease.machineId))?.state).toBe('paused')
+  })
+})
+
+describe('machine pool peek', () => {
+  it('finds a running box without waking a sleeping one or resetting its idle clock', async () => {
+    const pool = await openPool()
+    expect(pool.mountsHostWorkspace).toBe(true)
+    expect(await pool.peek({ accountId: mia.id, workspace: dir })).toBeUndefined()
+    const lease = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const seen = await pool.peek({ accountId: mia.id, workspace: dir })
+    expect(seen?.machineId).toBe(lease.machineId)
+    expect(seen?.link).toBe(lease.link)
+    lease.release()
+    await pool.pause(lease.machineId)
+    expect(await pool.peek({ accountId: mia.id, workspace: dir })).toBeUndefined()
+    expect((await pool.row(lease.machineId))?.state).toBe('paused')
+    // Another scope's box is another box.
+    expect(await pool.peek({ accountId: mia.id, workspace: dir, scope: 'thread:t1' })).toBeUndefined()
+  })
+
+  it('says when boxes keep their own volume instead of the host folder', async () => {
+    expect((await openPool({ hostWorkspace: false })).mountsHostWorkspace).toBe(false)
   })
 })

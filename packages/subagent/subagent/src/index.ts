@@ -64,4 +64,10 @@ export abstract class SubagentService extends Service {
   abstract send(senderId: string, recipientId: string, message: string): Promise<void>
   abstract list(parentId: string, scope?: SubagentScope): Promise<SubagentEntry[]>
   abstract readResult(parentId: string, id: string, range?: SubagentResultRange): Promise<SubagentResultPage>
+  /**
+   * Settles once no subagent of this scope is running (at once when none
+   * is). A host that lends the scope something only while work runs (a box
+   * lease) holds it until then, since children outlive their parent's turn.
+   */
+  abstract settled(): Promise<void>
 }

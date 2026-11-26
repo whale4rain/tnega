@@ -158,6 +158,7 @@ export class SecretVault {
   readonly file: string | undefined
   private readonly saved: RememberedSecrets
   private readonly session = new Map<string, Map<string, string>>()
+  private readonly rememberedListeners = new Set<(workspace: string) => void>()
 
   constructor(options: SecretVaultOptions = {}) {
     if (options.remembered) {
@@ -182,6 +183,7 @@ export class SecretVault {
       await this.saved.set(scope.workspace, name, value)
       // The saved value is now the one; a session value would hide it.
       this.session.get(key)?.delete(name)
+      this.rememberedChanged(scope.workspace)
       return { name, remembered: true }
     }
     let values = this.session.get(key)
@@ -194,7 +196,24 @@ export class SecretVault {
     const values = this.session.get(this.sessionKey(scope))
     const fromSession = values?.delete(name) ?? false
     const fromSaved = await this.saved.remove(scope.workspace, name)
+    if (fromSaved) this.rememberedChanged(scope.workspace)
     return fromSession || fromSaved
+  }
+
+  /**
+   * Hear when a workspace's remembered secrets change, for whoever copied them
+   * out of the vault (the egress proxy's keys for a running box). Returns the
+   * unsubscribe.
+   */
+  onRememberedChange(listener: (workspace: string) => void): () => void {
+    this.rememberedListeners.add(listener)
+    return () => { this.rememberedListeners.delete(listener) }
+  }
+
+  private rememberedChanged(workspace: string): void {
+    for (const listener of [...this.rememberedListeners]) {
+      try { listener(workspace) } catch { /* a listener must not undo a saved secret */ }
+    }
   }
 
   /** Values for this scope: remembered ones, with this session's own on top. */

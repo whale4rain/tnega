@@ -1,4 +1,4 @@
-import { accountsCapability, BOX_WORKSPACE, GITHUB_TOKEN_SECRET, boxLinkMachine, boxMachine, controlCapability, memberLoginOf, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
+import { accountsCapability, BOX_WORKSPACE, GITHUB_TOKEN_SECRET, boxLinkMachine, boxMachine, boxWorkbench, controlCapability, memberLoginOf, daemonDoorCapability, machinesCapability, openSecretVault, stateCapability, stateSpecFromEnv, type AccountsCapabilitySpec, type MachinesCapabilitySpec, type StateCapabilitySpec } from '@tnega/runtime'
 import { githubApiForge, githubApiLookup, hasProjectState, prepareThreadClone, threadCloneDir, threadCloneOwner, knownProjectWorkspaces, projectRoutineWakes } from '@tnega/project-host'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
@@ -32,7 +32,8 @@ import { daemonRoutes } from '@tnega/daemon-routes'
 import { Context } from '@tnega/core'
 import type { ResidentAgentEntry, ProjectHostEntry, ServerContext } from './context.js'
 import { CHATGPT_DEFAULT_MODEL, applyNetwork, handleApi, projectHostFor, registerApiRoutes, rejectsApiRequest } from './routes.js'
-import { webServer } from '@tnega/web-kit'
+import { webServer, type WebServerService } from '@tnega/web-kit'
+import { FileServeError, type FileRoutesConfig } from '@tnega/workspace-files'
 
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 3080
@@ -149,7 +150,7 @@ function threadBoxes(root: Context, membersRoot: string): NonNullable<ServerCont
           throw new Error(`the box for thread ${thread.id} serves no workspace`)
         }
         return {
-          machine: boxLinkMachine(link, folder),
+          machine: boxLinkMachine(link, folder, () => pool.proxiedSecrets(folder)),
           cwd: BOX_WORKSPACE,
           close: () => link.close(),
           // git and gh for the thread's branch run in its box: the box is the sandbox, keys come from the egress proxy.
@@ -176,6 +177,24 @@ function threadBoxes(root: Context, membersRoot: string): NonNullable<ServerCont
   }
 }
 
+/**
+ * The Workbench on a server whose boxes keep their own volume: the signed-in
+ * person's box for the workspace, while it runs. Looking never starts or
+ * wakes a box (the Workbench asks every few seconds); a box that sleeps
+ * answers 503 until the next run wakes it. Someone not signed in (no account)
+ * sees this host's folder.
+ */
+function boxFiles(root: Context, web: WebServerService): NonNullable<FileRoutesConfig['machine']> {
+  const pool = root.get('machinePool')
+  return async (workspace, req) => {
+    const accountId = web.attributes(req).principal?.accountId
+    if (!accountId) return undefined
+    const lease = await pool.peek({ accountId, workspace })
+    if (!lease) throw new FileServeError('your box for this folder is not running; its files show here while a run works in it', 503)
+    return boxWorkbench(lease)
+  }
+}
+
 /** Runs in boxes: a lease on the person's box for the workspace, ended when the run ends. */
 function boxRuns(root: Context): NonNullable<ServerContext['machineFor']> {
   const pool = root.get('machinePool')
@@ -186,7 +205,7 @@ function boxRuns(root: Context): NonNullable<ServerContext['machineFor']> {
     let id = ids.get(lease.link)
     if (id === undefined) ids.set(lease.link, id = ++next)
     return {
-      machine: boxMachine(lease, workspace),
+      machine: boxMachine(lease, workspace, () => pool.proxiedSecrets(workspace)),
       cwd: lease.workspacePath,
       identity: `${lease.machineId}:${id}`,
       release: lease.release,
@@ -249,6 +268,11 @@ export async function startWebServer(
       ...options.machines,
       pool: { rememberedSecrets: (workspace: string) => secretVault.vault.remembered(threadCloneOwner(workspace) ?? workspace), ...options.machines.pool },
     })
+    // A key saved or removed while a box runs reaches its proxy now, not at the next resume.
+    const pool = root.get('machinePool')
+    root.fiber.effect(() => secretVault.vault.onRememberedChange(() => {
+      void pool.refreshPolicies().catch((error: unknown) => console.warn('[tnega] could not refresh box keys:', error))
+    }), 'refresh box keys')
   }
   await root.plugin(stateCapability, state)
   // Effects and schedules live with the state: on Postgres, routines run with no window open.
@@ -300,6 +324,8 @@ export async function startWebServer(
   // in-process daemon's routes serve them.
   await root.plugin(daemonRoutes, {
     browser: () => browser,
+    // A box with its own volume (E2B) holds the work: the Workbench reads the signed-in person's box.
+    ...(options.machines && !root.get('machinePool').mountsHostWorkspace ? { files: { machine: boxFiles(root, web) } } : {}),
     ...(startConfig.computerDriverPath ? { computerDriverPath: startConfig.computerDriverPath } : {}),
   })
   await root.plugin(projectApi, { host: (workspace: string) => projectHostFor(context, workspace) })

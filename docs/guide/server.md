@@ -238,8 +238,11 @@ apply as they do on the host.
 **E2B**: set `E2B_API_KEY` (and `E2B_API_URL` for a self-hosted runtime).
 The box dials `wss://<TNEGA_PUBLIC_URL host>/daemon`, so the server must be on
 HTTPS, and `TNEGA_BOX_ADDRESS` must be the server's public IPv4 for the egress
-proxy. An E2B box has its own volume: the Workbench still shows the server
-folder, not the box's files.
+proxy. An E2B box has its own volume, so the Workbench shows the files in
+your box (the file tree, Changes and `@` file search, with git and ripgrep
+run in the box) while the box runs. Looking never wakes a box: while it
+sleeps, the Workbench says so (503) until the next run wakes it. One file
+moves in one daemon message, so files over 16 MiB are refused (413).
 
 How it fits together:
 
@@ -252,7 +255,13 @@ How it fits together:
   restarted server finds its boxes and their daemons dial back in by
   themselves.
 - No secret values reach a box: keys the egress proxy adds stay with the
-  proxy, and every other remembered secret is withheld from commands.
+  proxy, and every other secret is withheld from commands. For each key the
+  proxy adds (for example `GITHUB_TOKEN`), commands see the variable set to a
+  placeholder (`tnega-egress-adds-GITHUB_TOKEN`), so tools that want it set
+  still start, and the proxy puts the real key on the request. Only
+  remembered secrets reach the proxy; a secret kept for one session stays out
+  of the box. Saving or removing a remembered secret applies to running boxes
+  at once.
 - **GitHub.** Save a `GITHUB_TOKEN` secret (remembered) for the folder. The
   egress proxy then sends it to `github.com` (for `git push`) and
   `api.github.com`, unless the folder's `.tnega/environment.toml` sets keys for
@@ -270,8 +279,15 @@ How it fits together:
   thread's branch back into the folder's repository, then removes the clones.
   It also removes those branches, unless a branch has commits that are not on
   a remote branch or on the folder's HEAD.
-- Not in a box yet: subagents and a coding session's MCP servers. A run in a
-  box goes without them for now.
+- **Subagents and MCP servers.** A run in a box can start subagents; their
+  commands and files are the box's, and their Sessions stay on the server.
+  A coding session's MCP servers come from the box's own
+  `.tnega/mcp.json` and run in the box, talking over stdin and stdout
+  through its daemon (`tnega daemon --pipes`, which the box start script
+  passes). They have the box's network rule and get keys only through the
+  egress proxy. A box image built before this release cannot run them: rebuild
+  the template (`pnpm try:boxes template`, or `deploy/gvisor/build-rootfs.sh`)
+  and the session uses them; until then it goes without.
 
 ## Your own computer as a daemon
 

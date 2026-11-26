@@ -596,6 +596,9 @@ importers:
       '@tnega/llm':
         specifier: workspace:*
         version: link:../llm
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../process/process
       '@tnega/session':
         specifier: workspace:*
         version: link:../session
@@ -1186,6 +1189,9 @@ importers:
         specifier: workspace:*
         version: link:../workspace-prompt
     devDependencies:
+      '@tnega/daemon':
+        specifier: workspace:*
+        version: link:../daemon/daemon
       '@tnega/daemon-protocol':
         specifier: workspace:*
         version: link:../daemon/protocol
@@ -2215,6 +2221,9 @@ importers:
       '@tnega/web-kit':
         specifier: workspace:*
         version: link:../web-kit
+      '@tnega/workspace-files':
+        specifier: workspace:*
+        version: link:../workspace-files
 
   packages/sandbox/execution-sandbox:
     dependencies:
@@ -2765,6 +2774,9 @@ importers:
       '@tnega/fs':
         specifier: workspace:*
         version: link:../fs/fs
+      '@tnega/process':
+        specifier: workspace:*
+        version: link:../process/process
       '@tnega/process-local':
         specifier: workspace:*
         version: link:../process/process-local

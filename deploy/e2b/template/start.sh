@@ -53,4 +53,5 @@ if [ -n "${TNEGA_EGRESS_CA:-}" ]; then
   unset TNEGA_EGRESS_CA
 fi
 
-exec tnega daemon --server "$TNEGA_SERVER" --workspace "$workspace"
+# --pipes: the box is the sandbox, so a coding session's MCP servers run here over stdin/stdout.
+exec tnega daemon --server "$TNEGA_SERVER" --workspace "$workspace" --pipes

@@ -71,6 +71,24 @@ describe('SecretVault', () => {
     expect(await v.remove(a, 'TOKEN')).toBe(false)
   })
 
+  it('tells listeners when a workspace\'s remembered secrets change, and only then', async () => {
+    const { vault: v, workspace } = await vault()
+    const heard: string[] = []
+    const off = v.onRememberedChange(changed => heard.push(changed))
+    const scope = { workspace, sessionId: 'a' }
+    await v.set(scope, 'SESSION_ONLY', 'value')
+    expect(heard).toEqual([])
+    await v.set(scope, 'KEPT', 'value', { remember: true })
+    expect(heard).toEqual([workspace])
+    await v.remove(scope, 'SESSION_ONLY')
+    expect(heard).toEqual([workspace])
+    await v.remove(scope, 'KEPT')
+    expect(heard).toEqual([workspace, workspace])
+    off()
+    await v.set(scope, 'KEPT', 'value', { remember: true })
+    expect(heard).toHaveLength(2)
+  })
+
   it('refuses names commands rely on and empty values', async () => {
     const { vault: v, workspace } = await vault()
     await expect(v.set({ workspace, sessionId: 'a' }, 'PATH', 'x')).rejects.toMatchObject({ code: 'SECRET_INVALID' })

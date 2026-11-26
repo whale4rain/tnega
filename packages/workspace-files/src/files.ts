@@ -38,7 +38,8 @@ export interface ServedFile {
   mediaType: string
 }
 
-export async function readWorkspaceFile(fs: WorkspaceFs, path: string): Promise<ServedFile> {
+export async function readWorkspaceFile(fs: WorkspaceFs, path: string, maxBytes = MAX_SERVED_FILE_BYTES): Promise<ServedFile> {
+  const limit = Math.min(maxBytes, MAX_SERVED_FILE_BYTES)
   const mediaType = FILE_MEDIA_TYPES[extname(path).slice(1).toLowerCase()]
   if (!mediaType) throw new FileServeError(`unsupported file type: ${path}`, 415)
   try {
@@ -49,7 +50,7 @@ export async function readWorkspaceFile(fs: WorkspaceFs, path: string): Promise<
   }
   const info = await fs.stat(path).catch(() => undefined)
   if (info?.kind !== 'file') throw new FileServeError(`file not found: ${path}`, 404)
-  if (info.size > MAX_SERVED_FILE_BYTES) throw new FileServeError(`file exceeds ${MAX_SERVED_FILE_BYTES} bytes`, 413)
+  if (info.size > limit) throw new FileServeError(`file exceeds ${limit} bytes`, 413)
   return { bytes: Buffer.from(await fs.readFile(path)), mediaType }
 }
 

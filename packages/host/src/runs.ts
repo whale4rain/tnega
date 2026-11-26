@@ -24,7 +24,7 @@ import { toolSubagent } from '@tnega/tool-subagent'
 import { ProcessRegistry, tools, type ToolsService } from '@tnega/tools'
 import type { SecretVault } from '@tnega/secrets-local'
 import { ApprovalBroker, permissionGuard, type PermissionMode } from '@tnega/approval-host'
-import { runtimeCapabilities, sandboxedPermission, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
+import { boxMcp, runtimeCapabilities, sandboxedPermission, type SandboxNetworkSettings, type SandboxNetworkSource } from '@tnega/runtime'
 import { workspaceSubagentRoot } from '@tnega/home'
 import { captureFileEditBaseline, captureWritePreimage, editedFiles } from '@tnega/workspace-files'
 import { toolWebSearch } from '@tnega/tool-web-search'
@@ -146,8 +146,9 @@ export async function handleRun(
         processes: processesFor(context, workspace),
       },
       plugins: [
-        // MCP servers start on this host, so a run in a box goes without them.
-        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false, ...(box ? { mcp: false } : {}) })] : []),
+        // In a box, MCP servers run in the box (none when its image cannot run them), and no
+        // skill tools read this host's disk.
+        ...(coding ? [createCodingAgentPlugin({ cwd: workspace, mode, registerAgent: false, ...(box ? { mcp: boxMcp(box.machine, box.cwd) ?? false, skills: false } : {}) })] : []),
         ...hostPlugins(context, workspace),
       ],
     })
@@ -440,8 +441,9 @@ export async function createResidentRuntime(
       cwd: workspace,
       mode: 'auto',
       registerAgent: false,
-      // MCP servers start on this host, so a run in a box goes without them.
-      ...(box ? { mcp: false } : {}),
+      // In a box, MCP servers run in the box (none when its image cannot run them), and no
+      // skill tools read this host's disk.
+      ...(box ? { mcp: boxMcp(box.machine, box.cwd) ?? false, skills: false } : {}),
     }))
   }
   await root.plugin(agents)
@@ -483,8 +485,9 @@ export async function createResidentRuntime(
     },
   }))
   await root.plugin(goalTools)
-  // Subagents run their commands on this host; a run in a box has none yet.
-  if (!box) await root.plugin(subagentLocal, {
+  // Subagents share this scope's tools, so in a box their commands and files are the box's too.
+  // Their Sessions stay with the host's state, keyed by the host folder like the parent's.
+  await root.plugin(subagentLocal, {
     cwd: workspace,
     storageRoot: workspaceSubagentRoot(workspace),
     llm: adapterFromConfig(req.effective, req.apiKey),
@@ -493,7 +496,7 @@ export async function createResidentRuntime(
     allowNetwork: true,
     permission: req.permission,
   })
-  if (!box) await root.plugin(toolSubagent)
+  await root.plugin(toolSubagent)
   for (const plugin of req.hostPlugins ?? []) await root.plugin(plugin)
   return {
     root,
@@ -697,10 +700,12 @@ export async function runResidentTurn(
   let releaseWriteCapture: ReturnType<ToolsService['guard']> | undefined
 
   let box: BoxRun | undefined
+  let residentRoot: Context | undefined
   try {
     box = await boxFor(context, workspace, id, req.accountId, controller.signal)
     if (box) req = { ...req, box }
     const entry = await ensureResidentAgent(context, workspace, id, req)
+    residentRoot = entry.root
     ptcObservation = await observePtc(entry.root, id, event => {
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
     })
@@ -787,7 +792,15 @@ export async function runResidentTurn(
     }
     detachApproval()
     context.activeRuns.delete(key)
-    box?.release()
+    // Subagents outlive the turn that started them and run in the same box:
+    // keep the lease until the last one settles, so the box never pauses under one.
+    const subagents = residentRoot?.get('subagents', false)
+    if (box && subagents) {
+      const lease = box
+      void subagents.settled().finally(() => lease.release())
+    } else {
+      box?.release()
+    }
     markReady(false)
     context.steeringReady.delete(key)
     if (!res.destroyed && !res.writableEnded) res.end()

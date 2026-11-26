@@ -7,6 +7,7 @@ import { renderToolResult } from '@tnega/session'
 import { acceptDaemon, memoryTransportPair, type DaemonLink } from '@tnega/daemon-protocol'
 import { startDaemon, type DaemonBrowser, type DaemonComputer } from '@tnega/daemon'
 import { RemoteWorkspaceFs } from '@tnega/fs-remote'
+import { SecretVault } from '@tnega/secrets-local'
 import { runtimeCapabilities, type RuntimeSpec } from '../src/compose.js'
 
 const dirs: string[] = []
@@ -265,6 +266,58 @@ it('runs commands in a box without an inner sandbox, whatever the Session permis
     const result = await ctx.get('tools').execute('shell', { command: 'node -e "console.log(41 + 1)"' })
     expect(renderToolResult(result)).toContain('42')
     expect(sent).toMatchObject([{ sandbox: { mode: 'bypass' } }])
+  } finally {
+    await fiber.dispose()
+  }
+})
+
+it('gives a box\'s commands placeholders for the keys its egress proxy adds, and no other secret', async () => {
+  const dir = await tempDir()
+  const loopback = await loopbackDaemon([dir])
+  cleanups.push(() => loopback.close())
+  const vault = new SecretVault({ file: join(await tempDir(), 'secrets.json') })
+  await vault.set({ workspace: dir, sessionId: 's' }, 'GITHUB_TOKEN', 'ghp_real', { remember: true })
+  await vault.set({ workspace: dir, sessionId: 's' }, 'OTHER_KEY', 'other_real')
+  const ctx = new Context()
+  const fiber = ctx.plugin(runtimeCapabilities, {
+    workspace: dir,
+    machine: { link: loopback.link, isolated: true, secrets: { withholdOthers: true, proxied: async () => ['GITHUB_TOKEN'] } },
+    permission: 'bypass',
+    builtin: { allowShell: true },
+    secrets: { vault, sessionId: 's' },
+    search: false, skills: false, office: false, spill: false,
+  })
+  await fiber
+  try {
+    const result = await ctx.get('tools').execute('shell', {
+      command: 'node -e "console.log(JSON.stringify([process.env.GITHUB_TOKEN, process.env.OTHER_KEY ?? null]))"',
+    })
+    const text = renderToolResult(result)
+    // The placeholder `@tnega/secrets` defines; the proxy swaps it for the key.
+    expect(JSON.parse(text)).toMatchObject({ exitCode: 0, stdout: `${JSON.stringify(['tnega-egress-adds-GITHUB_TOKEN', null])}\n` })
+    expect(text).not.toContain('ghp_real')
+    expect(text).not.toContain('other_real')
+  } finally {
+    await fiber.dispose()
+  }
+})
+
+it('gives the placeholders even to a scope with no secret store, as a Project thread runs', async () => {
+  const dir = await tempDir()
+  const loopback = await loopbackDaemon([dir])
+  cleanups.push(() => loopback.close())
+  const ctx = new Context()
+  const fiber = ctx.plugin(runtimeCapabilities, {
+    workspace: dir,
+    machine: { link: loopback.link, isolated: true, secrets: { withholdOthers: true, proxied: async () => ['GITHUB_TOKEN'] } },
+    permission: 'bypass',
+    builtin: { allowShell: true },
+    search: false, skills: false, office: false, spill: false,
+  })
+  await fiber
+  try {
+    const result = await ctx.get('tools').execute('shell', { command: 'node -e "console.log(process.env.GITHUB_TOKEN)"' })
+    expect(JSON.parse(renderToolResult(result))).toMatchObject({ exitCode: 0, stdout: 'tnega-egress-adds-GITHUB_TOKEN\n' })
   } finally {
     await fiber.dispose()
   }

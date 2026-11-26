@@ -226,6 +226,7 @@ export class LocalSubagentService extends SubagentService {
   private readonly handles = new Map<string, AgentHandle>()
   private readonly activating = new Map<string, Promise<LiveAgent>>()
   private readonly running = new Set<string>()
+  private idleWaiters: Array<() => void> = []
   private readonly reported = new Map<string, string>()
 
   constructor(ctx: Context, config: LocalSubagentConfig) {
@@ -316,7 +317,7 @@ export class LocalSubagentService extends SubagentService {
         id, parentId: parent.id, label, mode, audience, status: 'running', depth, createdAt, updatedAt: createdAt,
       }
     } catch (error) {
-      this.running.delete(id)
+      this.stopped(id)
       this.handles.delete(id)
       await handle?.dispose().catch(() => undefined)
       throw error
@@ -379,6 +380,24 @@ export class LocalSubagentService extends SubagentService {
     }
     this.handles.clear()
     this.running.clear()
+    this.wakeIdle()
+  }
+
+  override settled(): Promise<void> {
+    if (this.running.size === 0) return Promise.resolve()
+    return new Promise(resolve => { this.idleWaiters.push(resolve) })
+  }
+
+  /** A child is no longer running; wake whoever waits for none to be. */
+  private stopped(id: string): void {
+    this.running.delete(id)
+    if (this.running.size === 0) this.wakeIdle()
+  }
+
+  private wakeIdle(): void {
+    const waiters = this.idleWaiters
+    this.idleWaiters = []
+    for (const resolve of waiters) resolve()
   }
 
   private async activate(id: string): Promise<LiveAgent> {
@@ -424,7 +443,7 @@ export class LocalSubagentService extends SubagentService {
     } catch {
       // The child Session remains available for inspection and later follow-up.
     } finally {
-      this.running.delete(id)
+      this.stopped(id)
       this.reported.delete(id)
     }
   }

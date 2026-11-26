@@ -20,6 +20,8 @@ export interface DaemonArgs {
   browser?: boolean
   /** Let the runtime see and use the apps on this machine. */
   computer?: boolean
+  /** Serve stdio processes (MCP servers) with no sandbox: only for a daemon that is itself the sandbox (a box). */
+  pipes?: boolean
 }
 
 /** Environment variable for the token, so it stays out of the process list. */
@@ -61,6 +63,7 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
   let pair: string | undefined
   let browser = false
   let computer = false
+  let pipes = false
   const workspaces: string[] = []
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]!
@@ -84,6 +87,10 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
         if (inline !== undefined) throw new CliError('--computer takes no value')
         computer = true
         break
+      case '--pipes':
+        if (inline !== undefined) throw new CliError('--pipes takes no value')
+        pipes = true
+        break
       default: throw new CliError(`unknown option for tnega daemon: ${arg}`)
     }
   }
@@ -98,6 +105,7 @@ export function parseDaemonArgs(args: readonly string[], env: NodeJS.ProcessEnv 
     ...(deviceId ? { deviceId } : {}),
     ...(browser ? { browser: true } : {}),
     ...(computer ? { computer: true } : {}),
+    ...(pipes ? { pipes: true } : {}),
   }
 }
 
@@ -162,6 +170,7 @@ export async function runDaemonCommand(args: readonly string[]): Promise<number>
   const daemon: Daemon = startDaemon({
     ...(browser ? { browser } : {}),
     ...(computer ? { computer: { computer: computer.computer, ...(guard ? { guard } : {}) } } : {}),
+    ...(parsed.pipes ? { pipes: true } : {}),
     connect: () => connectWebSocket(parsed.server, { token, allowPlain: parsed.allowPlain === true }),
     workspaces: parsed.workspaces.map(path => ({ path })),
     ...(parsed.deviceId ? { deviceId: parsed.deviceId } : {}),

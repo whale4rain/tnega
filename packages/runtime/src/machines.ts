@@ -11,7 +11,13 @@ export { GITHUB_TOKEN_SECRET } from '@tnega/environment'
 import { machineE2B, type E2BMachineConfig } from '@tnega/machine-e2b'
 import { machineGvisor, type GvisorMachineConfig } from '@tnega/machine-gvisor'
 import { machinePool, type MachineLease, type MachinePoolConfig } from '@tnega/machine-pool'
-import type { DaemonLink } from '@tnega/daemon-protocol'
+import { MAX_PAYLOAD_BYTES, type DaemonLink } from '@tnega/daemon-protocol'
+import { MCP_CONFIG_FILE, parseMcpConfig, type McpLaunchOptions } from '@tnega/coding-agent'
+import { RemoteWorkspaceFs, announcedWorkspace } from '@tnega/fs-remote'
+import { remoteExecutionProvider, remotePipes } from '@tnega/process-remote'
+import { proxiedSecretEnv } from '@tnega/execution-secrets'
+import type { WorkspaceFs } from '@tnega/fs'
+import type { ExecutionProvider } from '@tnega/process'
 import type { MachineSpec } from './compose.js'
 
 export { BOX_WORKSPACE } from '@tnega/machine-pool'
@@ -61,14 +67,63 @@ export const machinesCapability: Plugin = {
   },
 }
 
-/** The `MachineSpec` a run in a box gets: its daemon's link, and no secret values in the box. */
-export function boxMachine(lease: MachineLease, hostWorkspace: string): MachineSpec {
-  return boxLinkMachine(lease.link, hostWorkspace)
+/**
+ * The `MachineSpec` a run in a box gets: its daemon's link, and no secret
+ * values in the box. `proxied` names the secrets the egress proxy adds
+ * (`MachinePool.proxiedSecrets`): commands see a placeholder for each.
+ */
+export function boxMachine(lease: MachineLease, hostWorkspace: string, proxied?: () => Promise<readonly string[]>): MachineSpec {
+  return boxLinkMachine(lease.link, hostWorkspace, proxied)
 }
 
 /** A box reached through any link to its daemon (a Project thread's leased link). */
-export function boxLinkMachine(link: DaemonLink, hostWorkspace: string): MachineSpec {
-  return { link, secrets: { withholdOthers: true }, hostWorkspace, isolated: true }
+export function boxLinkMachine(link: DaemonLink, hostWorkspace: string, proxied?: () => Promise<readonly string[]>): MachineSpec {
+  return { link, secrets: { withholdOthers: true, ...(proxied ? { proxied } : {}) }, hostWorkspace, isolated: true }
+}
+
+/**
+ * A coding session's MCP servers in a box: read from the box's own
+ * `.tnega/mcp.json` and started there over stdin and stdout, beside the files
+ * they work on. Undefined when the box's daemon cannot run them (an image
+ * built before it could): the session then goes without MCP servers.
+ */
+export function boxMcp(machine: MachineSpec, cwd: string): McpLaunchOptions | undefined {
+  const launch = remotePipes(machine.link)
+  if (!launch) return undefined
+  const secrets = machine.secrets
+  return {
+    cwd,
+    launch,
+    // Servers in a box reach the egress proxy like its commands do: with placeholders, never the keys.
+    ...(secrets?.proxied ? { env: () => proxiedSecretEnv(secrets) } : {}),
+    readConfig: async () => {
+      const files = new RemoteWorkspaceFs(machine.link, announcedWorkspace(machine.link, cwd), cwd)
+      if (!(await files.stat(MCP_CONFIG_FILE))) return {}
+      return parseMcpConfig(Buffer.from(await files.readFile(MCP_CONFIG_FILE)).toString('utf8'))
+    },
+  }
+}
+
+/**
+ * The Workbench's view of a box's workspace, for boxes that keep the work on
+ * their own volume (E2B): its files, and git and ripgrep run in the box. The
+ * box is its own sandbox, so these run without an inner one; files stay
+ * fenced to the workspace by the box's daemon. `release` ends the lease.
+ */
+export function boxWorkbench(lease: MachineLease): { fs: WorkspaceFs; runProcess: ExecutionProvider['runProcess']; key: string; maxFileBytes: number; release(): void } {
+  const workspace = announcedWorkspace(lease.link, lease.workspacePath)
+  const execution = remoteExecutionProvider(lease.link, {
+    workspaceId: workspace.id,
+    sandbox: () => ({ mode: 'bypass', sessionId: 'workbench' }),
+  })
+  return {
+    fs: new RemoteWorkspaceFs(lease.link, workspace, lease.workspacePath),
+    runProcess: request => execution.runProcess(request),
+    key: `box:${lease.machineId}`,
+    // One daemon message carries a whole file: a larger one gets a clear 413, not a protocol error.
+    maxFileBytes: MAX_PAYLOAD_BYTES,
+    release: () => lease.release(),
+  }
 }
 
 /** This host's first private IPv4 address: where its boxes reach it. */

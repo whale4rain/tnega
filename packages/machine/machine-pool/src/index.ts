@@ -232,23 +232,87 @@ export class MachinePool extends Service {
     return raw === undefined ? undefined : parseEnvironment(raw)
   }
 
+  /** The keys the egress proxy adds for a workspace's boxes, and the secret names they come from. */
+  private async credentialsFor(workspace: string, environment: Environment | undefined): Promise<{ credentials: NonNullable<EgressPolicy['credentials']>; names: string[] }> {
+    if (!this.config.rememberedSecrets) return { credentials: [], names: [] }
+    const secrets = await this.config.rememberedSecrets(workspace)
+    let credentials: NonNullable<EgressPolicy['credentials']> = []
+    const names = new Set<string>()
+    if (environment?.network.credentials.length) {
+      const resolved = egressCredentials(environment, Object.entries(secrets).map(([name, value]) => ({ name, value })))
+      credentials = resolved.credentials
+      // Only a credential the proxy really adds gets a placeholder; one
+      // missing a secret is left out whole, with the secrets it does have.
+      for (const name of resolved.used) names.add(name)
+    }
+    // A remembered GITHUB_TOKEN lets git and gh in the box reach GitHub, unless the environment says otherwise for that host.
+    const token = secrets[GITHUB_TOKEN_SECRET]
+    if (token) {
+      const own = new Set(credentials.map(credential => credential.host))
+      const github = githubCredentials(token).filter(credential => !own.has(credential.host))
+      credentials = [...credentials, ...github]
+      if (github.length) names.add(GITHUB_TOKEN_SECRET)
+    }
+    return { credentials, names: [...names].sort() }
+  }
+
   private async policyFor(row: Pick<MachineRow, 'id' | 'workspace'>): Promise<EgressPolicy> {
     const environment = await this.environment(row.workspace).catch(() => undefined)
     const allow = [...new Set([...(this.config.egress?.allow ?? DEFAULT_SETUP_HOSTS), ...environment?.network.allow ?? []])]
-    let credentials: NonNullable<EgressPolicy['credentials']> = []
-    if (this.config.rememberedSecrets) {
-      const secrets = await this.config.rememberedSecrets(row.workspace)
-      if (environment?.network.credentials.length) {
-        credentials = egressCredentials(environment, Object.entries(secrets).map(([name, value]) => ({ name, value }))).credentials
-      }
-      // A remembered GITHUB_TOKEN lets git and gh in the box reach GitHub, unless the environment says otherwise for that host.
-      const token = secrets[GITHUB_TOKEN_SECRET]
-      if (token) {
-        const own = new Set(credentials.map(credential => credential.host))
-        credentials = [...credentials, ...githubCredentials(token).filter(credential => !own.has(credential.host))]
-      }
-    }
+    const { credentials } = await this.credentialsFor(row.workspace, environment)
     return { name: `box ${row.id.slice(0, 8)}`, allow, credentials }
+  }
+
+  /**
+   * The secrets the egress proxy adds to a workspace's box requests. Commands
+   * in the box get a placeholder for each in place of the value, so a tool
+   * that wants the variable set (`gh`, an SDK) starts, and the proxy puts
+   * the real key on the request. Empty when the box has no egress proxy.
+   */
+  async proxiedSecrets(workspace: string): Promise<string[]> {
+    if (this.network !== 'egress') return []
+    const environment = await this.environment(workspace).catch(() => undefined)
+    return (await this.credentialsFor(workspace, environment)).names
+  }
+
+  /**
+   * Read the keys of every box that may run again, so a secret saved or
+   * removed while a box runs reaches its proxy at once instead of at the next
+   * resume. Cheap: a few boxes per host.
+   */
+  async refreshPolicies(): Promise<void> {
+    if (this.network !== 'egress') return
+    // One pass at a time: two overlapping passes could let the slower one
+    // write a key back after the faster one dropped it. A change during a
+    // pass asks for one more pass, which reads the store afresh.
+    this.refreshAgain = true
+    if (!this.refreshing) {
+      this.refreshing = (async () => {
+        try {
+          while (this.refreshAgain) {
+            this.refreshAgain = false
+            await this.refreshOnce()
+          }
+        } finally {
+          this.refreshing = undefined
+        }
+      })()
+    }
+    return this.refreshing
+  }
+
+  private refreshing: Promise<void> | undefined
+  private refreshAgain = false
+
+  private async refreshOnce(): Promise<void> {
+    const { rows } = await this.sql.query(`select ${COLUMNS} from machine where state <> 'cold' and egress_hash is not null`)
+    for (const raw of rows) {
+      const row = rowFrom(raw)
+      if (!row.egressHash || !this.policies.has(row.egressHash)) continue
+      const policy = await this.policyFor(row)
+      // A box stopped meanwhile has no policy left to replace.
+      if (this.policies.has(row.egressHash)) this.policies.set(row.egressHash, policy)
+    }
   }
 
   /** Load the policies of boxes that may still run, and note boxes that stopped while the server was away. */
@@ -279,6 +343,15 @@ export class MachinePool extends Service {
 
   private async setState(id: string, state: MachineRow['state'], tx: SqlQueryable = this.sql): Promise<void> {
     await tx.query(`update machine set state = $2 where id = $1::uuid`, [id, state])
+  }
+
+  /**
+   * Whether a box mounts the workspace folder on this host. When it does not
+   * (E2B), the box's own volume holds the work, and whoever shows files reads
+   * them in the box.
+   */
+  get mountsHostWorkspace(): boolean {
+    return this.config.hostWorkspace !== false
   }
 
   /** The Provider's kind (`gvisor`, `e2b`), for an admin page. */
@@ -345,6 +418,25 @@ export class MachinePool extends Service {
       this.leave(id)
       throw error
     }
+  }
+
+  /**
+   * The box for an account's workspace if it runs and its daemon is
+   * connected right now; undefined otherwise. It neither starts nor resumes
+   * a box and does not reset its idle clock, so something that only looks
+   * (the Workbench, which asks every few seconds) never keeps a box awake.
+   * The lease's `release` does nothing.
+   */
+  async peek(input: { accountId: string; workspace: string; scope?: string }): Promise<MachineLease | undefined> {
+    const { rows } = await this.sql.query(
+      `select ${COLUMNS} from machine where account_id = $1::uuid and workspace = $2 and scope = $3`,
+      [input.accountId, input.workspace, input.scope ?? ''],
+    )
+    const row = rows[0] === undefined ? undefined : rowFrom(rows[0])
+    if (row?.state !== 'running' || !row.deviceId) return undefined
+    const live = this.daemons.get(row.deviceId)
+    if (!live) return undefined
+    return { machineId: row.id, deviceId: live.deviceId, link: live.link, workspacePath: WORKSPACE_PATH, release: () => undefined }
   }
 
   /**

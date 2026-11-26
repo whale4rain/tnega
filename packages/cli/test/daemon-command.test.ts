@@ -22,6 +22,12 @@ describe('tnega daemon', () => {
     expect(() => parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x', '--browser=yes'], {})).toThrow(/takes no value/)
   })
 
+  it('serves stdio processes only when asked', () => {
+    expect(parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x'], {}).pipes).toBeUndefined()
+    expect(parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x', '--pipes'], {}).pipes).toBe(true)
+    expect(() => parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x', '--pipes=1'], {})).toThrow(/takes no value/)
+  })
+
   it('offers computer use only when asked', () => {
     expect(parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x'], {}).computer).toBeUndefined()
     expect(parseDaemonArgs(['--server', 'wss://t.example', '--token', 'x', '--computer'], {}).computer).toBe(true)

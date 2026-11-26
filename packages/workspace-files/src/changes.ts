@@ -14,6 +14,13 @@ import { isRuntimeFile } from './runtime-files.js'
 const run = promisify(execFile)
 const MAX_FILES = 500
 
+/** Runs `git <args>` in a folder and answers its stdout; rejects when git fails. */
+export type GitRunner = (cwd: string, args: readonly string[]) => Promise<Buffer>
+
+/** git on this machine. */
+export const localGit: GitRunner = async (cwd, args) =>
+  (await run('git', [...args], { cwd, encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, windowsHide: true })).stdout
+
 export type ChangeStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked'
 
 export interface ChangedFile {
@@ -42,12 +49,12 @@ export interface FileDiff {
   reason?: 'binary' | 'too-large'
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await run('git', ['-c', 'core.quotepath=off', ...args], { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true })
-  return stdout
+async function textOf(runner: GitRunner, cwd: string, args: string[]): Promise<string> {
+  return (await runner(cwd, ['-c', 'core.quotepath=off', ...args])).toString('utf8')
 }
 
-async function repository(workspace: string): Promise<{ prefix: string; head: boolean } | undefined> {
+async function repository(runner: GitRunner, workspace: string): Promise<{ prefix: string; head: boolean } | undefined> {
+  const git = (cwd: string, args: string[]) => textOf(runner, cwd, args)
   try {
     const prefix = (await git(workspace, ['rev-parse', '--show-prefix'])).trim()
     const head = await git(workspace, ['rev-parse', '--verify', '-q', 'HEAD']).then(() => true, () => false)
@@ -89,9 +96,10 @@ function countLines(text: string): number {
   return text.split('\n').length - (text.endsWith('\n') ? 1 : 0)
 }
 
-export async function listChanges(fs: WorkspaceFs): Promise<ChangeSummary> {
+export async function listChanges(fs: WorkspaceFs, runner: GitRunner = localGit): Promise<ChangeSummary> {
   const workspace = fs.root
-  const repo = await repository(workspace)
+  const git = (cwd: string, args: string[]) => textOf(runner, cwd, args)
+  const repo = await repository(runner, workspace)
   if (!repo) return { git: false, files: [] }
   const branch = (await git(workspace, ['branch', '--show-current']).catch(() => '')).trim()
   const strip = (path: string) => path.startsWith(repo.prefix) ? path.slice(repo.prefix.length) : undefined
@@ -138,19 +146,18 @@ export async function listChanges(fs: WorkspaceFs): Promise<ChangeSummary> {
   }
 }
 
-export async function fileDiff(fs: WorkspaceFs, path: string): Promise<FileDiff> {
+export async function fileDiff(fs: WorkspaceFs, path: string, runner: GitRunner = localGit): Promise<FileDiff> {
   const workspace = fs.root
-  const repo = await repository(workspace)
+  const repo = await repository(runner, workspace)
   if (!repo) throw new FileServeError('workspace is not a git repository', 409)
   await checkInside(fs, path)
-  const change = (await listChanges(fs)).files.find(file => file.path === path)
+  const change = (await listChanges(fs, runner)).files.find(file => file.path === path)
   const status = change?.status ?? 'modified'
   const info = await fs.stat(path).catch(() => undefined)
   const working = info?.kind === 'file' ? Buffer.from(await fs.readFile(path)) : undefined
   const fromPath = `${repo.prefix}${change?.previousPath ?? path}`
   const committed = repo.head && status !== 'untracked' && status !== 'added'
-    ? await run('git', ['show', `HEAD:${fromPath}`], { cwd: workspace, encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, windowsHide: true })
-      .then(result => result.stdout, () => undefined)
+    ? await runner(workspace, ['show', `HEAD:${fromPath}`]).catch(() => undefined)
     : undefined
   const sides: Buffer[] = []
   if (working) sides.push(working)

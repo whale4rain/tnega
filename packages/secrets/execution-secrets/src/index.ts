@@ -15,14 +15,21 @@ export interface SecretEnvOptions {
   withholdOthers?: boolean
 }
 
+/** The variables a box process gets for the keys the egress proxy adds: each name set to its placeholder. */
+export async function proxiedSecretEnv(options: SecretEnvOptions | undefined): Promise<Record<string, string>> {
+  const placeholders: Record<string, string> = {}
+  for (const name of await options?.proxied?.() ?? []) placeholders[name] = proxiedSecretPlaceholder(name)
+  return placeholders
+}
+
 /**
  * `ctx.secrets` Consumer: an `ExecutionProvider` decorator that gives every
  * command and process this scope starts its secrets as environment variables.
  *
  * It reads the store at each call, so a key the user enters mid-turn reaches
  * the next command, and records what it handed over so masking still catches
- * those values once the store no longer holds them. With no store mounted it
- * passes requests through. A variable the caller sets itself wins over a secret
+ * those values once the store no longer holds them. With no store mounted and
+ * nothing proxied it passes requests through. A variable the caller sets itself wins over a secret
  * of the same name.
  *
  * Wrap the provider that spawns (the sandbox decorator's `inner`): the sandbox
@@ -35,20 +42,20 @@ export interface SecretEnvOptions {
  */
 export function secretEnvExecution(ctx: Context, inner: ExecutionProvider, options: SecretEnvOptions = {}): ExecutionProvider {
   async function env(own: Readonly<Record<string, string>> | undefined): Promise<Readonly<Record<string, string>> | undefined> {
+    // The proxy's names come from the server (the box pool), not this scope's
+    // store: a scope without a store (a Project thread) still gets them.
+    const placeholders = await proxiedSecretEnv(options)
     const store = ctx.get('secrets', false)
-    if (!store) return own
-    const entries = await store.entries()
-    if (entries.length === 0) return own
-    const proxied = new Set(await options.proxied?.() ?? [])
     const given: SecretEntry[] = []
-    const placeholders: Record<string, string> = {}
-    for (const entry of entries) {
-      if (proxied.has(entry.name)) placeholders[entry.name] = proxiedSecretPlaceholder(entry.name)
-      else if (!options.withholdOthers) given.push(entry)
+    if (store && !options.withholdOthers) {
+      for (const entry of await store.entries()) {
+        if (!(entry.name in placeholders)) given.push(entry)
+      }
+      // Masking keeps catching these once a command could have printed them,
+      // even if the user removes one before the tool result comes back.
+      if (given.length) store.noteInjected(given)
     }
-    // Masking keeps catching these once a command could have printed them,
-    // even if the user removes one before the tool result comes back.
-    if (given.length) store.noteInjected(given)
+    if (given.length === 0 && Object.keys(placeholders).length === 0) return own
     return { ...secretEnv(given), ...placeholders, ...own }
   }
   const withEnv = async <T extends { env?: Readonly<Record<string, string>> }>(request: T): Promise<T> => {
