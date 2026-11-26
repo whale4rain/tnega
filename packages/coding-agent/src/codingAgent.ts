@@ -3,7 +3,7 @@ import { defineAgent, HUMAN_COMMUNICATION_PROMPT, type LLMAdapter } from '@tnega
 import type { ModelMessage, SessionMode } from '@tnega/session'
 import { resolve } from 'node:path'
 import type { ToolDefinition } from '@tnega/tools'
-import { connectMcpServers, type McpLaunchOptions, type McpRuntime } from './mcp.js'
+import { MCP_CONFIG_FILE, connectMcpServers, type McpLaunchOptions, type McpRuntime } from './mcp.js'
 import { generatePlan } from './plan.js'
 import { skillTools } from './skills.js'
 import { createSlashRegistry, type SlashCommandResult } from './slash.js'
@@ -87,19 +87,14 @@ export function createCodingAgentPlugin(
       }
       let mcpRuntime: McpRuntime | undefined
       if (mcpEnabled) {
-        mcpRuntime = await connectMcpServers(cwd, () => {
-          mcpTools += 1
-        }, mcpRemote)
-        mcpServers = mcpRuntime.surveys.length
-        for (const survey of mcpRuntime.surveys) {
-          if (survey.status === 'failed') {
-            throw new Error(`mcp server ${survey.name} failed: ${survey.error ?? 'unknown'}`)
-          }
-        }
-        tools.push(...mcpRuntime.tools)
-        ctx.fiber.effect(() => () => {
-          void mcpRuntime?.dispose()
-        }, 'coding:dispose-mcp')
+        // A broken mcp.json or a server that will not start shows as a failed
+        // survey (`/mcp`); the session and the other servers go on without it.
+        const runtime = await connectMcpServers(cwd, undefined, mcpRemote)
+        mcpRuntime = runtime
+        mcpServers = runtime.surveys.filter(survey => survey.name !== MCP_CONFIG_FILE).length
+        mcpTools = runtime.tools.length
+        tools.push(...runtime.tools)
+        ctx.fiber.effect(() => () => runtime.dispose(), 'coding:dispose-mcp')
       }
       for (const tool of tools) {
         service.tools.register(tool)

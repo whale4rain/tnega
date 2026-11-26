@@ -11,10 +11,11 @@ export { GITHUB_TOKEN_SECRET } from '@tnega/environment'
 import { machineE2B, type E2BMachineConfig } from '@tnega/machine-e2b'
 import { machineGvisor, type GvisorMachineConfig } from '@tnega/machine-gvisor'
 import { machinePool, type MachineLease, type MachinePoolConfig } from '@tnega/machine-pool'
-import type { DaemonLink } from '@tnega/daemon-protocol'
+import { MAX_PAYLOAD_BYTES, type DaemonLink } from '@tnega/daemon-protocol'
 import { MCP_CONFIG_FILE, parseMcpConfig, type McpLaunchOptions } from '@tnega/coding-agent'
 import { RemoteWorkspaceFs, announcedWorkspace } from '@tnega/fs-remote'
 import { remoteExecutionProvider, remotePipes } from '@tnega/process-remote'
+import { proxiedSecretEnv } from '@tnega/execution-secrets'
 import type { WorkspaceFs } from '@tnega/fs'
 import type { ExecutionProvider } from '@tnega/process'
 import type { MachineSpec } from './compose.js'
@@ -89,9 +90,12 @@ export function boxLinkMachine(link: DaemonLink, hostWorkspace: string, proxied?
 export function boxMcp(machine: MachineSpec, cwd: string): McpLaunchOptions | undefined {
   const launch = remotePipes(machine.link)
   if (!launch) return undefined
+  const secrets = machine.secrets
   return {
     cwd,
     launch,
+    // Servers in a box reach the egress proxy like its commands do: with placeholders, never the keys.
+    ...(secrets?.proxied ? { env: () => proxiedSecretEnv(secrets) } : {}),
     readConfig: async () => {
       const files = new RemoteWorkspaceFs(machine.link, announcedWorkspace(machine.link, cwd), cwd)
       if (!(await files.stat(MCP_CONFIG_FILE))) return {}
@@ -106,7 +110,7 @@ export function boxMcp(machine: MachineSpec, cwd: string): McpLaunchOptions | un
  * box is its own sandbox, so these run without an inner one; files stay
  * fenced to the workspace by the box's daemon. `release` ends the lease.
  */
-export function boxWorkbench(lease: MachineLease): { fs: WorkspaceFs; runProcess: ExecutionProvider['runProcess']; key: string; release(): void } {
+export function boxWorkbench(lease: MachineLease): { fs: WorkspaceFs; runProcess: ExecutionProvider['runProcess']; key: string; maxFileBytes: number; release(): void } {
   const workspace = announcedWorkspace(lease.link, lease.workspacePath)
   const execution = remoteExecutionProvider(lease.link, {
     workspaceId: workspace.id,
@@ -116,6 +120,8 @@ export function boxWorkbench(lease: MachineLease): { fs: WorkspaceFs; runProcess
     fs: new RemoteWorkspaceFs(lease.link, workspace, lease.workspacePath),
     runProcess: request => execution.runProcess(request),
     key: `box:${lease.machineId}`,
+    // One daemon message carries a whole file: a larger one gets a clear 413, not a protocol error.
+    maxFileBytes: MAX_PAYLOAD_BYTES,
     release: () => lease.release(),
   }
 }

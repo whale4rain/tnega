@@ -181,7 +181,7 @@ function threadBoxes(root: Context, membersRoot: string): NonNullable<ServerCont
  * The Workbench on a server whose boxes keep their own volume: the signed-in
  * person's box for the workspace, while it runs. Looking never starts or
  * wakes a box (the Workbench asks every few seconds); a box that sleeps
- * answers 409 until the next run wakes it. Someone not signed in (no account)
+ * answers 503 until the next run wakes it. Someone not signed in (no account)
  * sees this host's folder.
  */
 function boxFiles(root: Context, web: WebServerService): NonNullable<FileRoutesConfig['machine']> {
@@ -190,7 +190,7 @@ function boxFiles(root: Context, web: WebServerService): NonNullable<FileRoutesC
     const accountId = web.attributes(req).principal?.accountId
     if (!accountId) return undefined
     const lease = await pool.peek({ accountId, workspace })
-    if (!lease) throw new FileServeError('your box for this folder is not running; its files show here while a run works in it', 409)
+    if (!lease) throw new FileServeError('your box for this folder is not running; its files show here while a run works in it', 503)
     return boxWorkbench(lease)
   }
 }

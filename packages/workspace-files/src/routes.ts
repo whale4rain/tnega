@@ -21,6 +21,8 @@ export interface WorkbenchMachine {
   key: string
   /** The machine's ripgrep. Default `rg`. */
   ripgrep?: string
+  /** The largest file one request may move to or from the machine (a daemon's payload limit). */
+  maxFileBytes?: number
   /** Called once the request is answered (a box lease ends). */
   release?(): void
 }
@@ -39,14 +41,25 @@ interface Opened {
   fs: WorkspaceFs
   git: GitRunner
   listing?: FileListingMachine
+  maxFileBytes?: number
 }
+
+/**
+ * `git show` of a file's committed side, kept byte for byte: the process seam
+ * carries text, so the box sends the bytes as base64 (a plain round trip
+ * through UTF-8 would mangle any file that is not UTF-8).
+ */
+const SHOW_AS_BASE64 = 'f=$(mktemp) || exit 1; git "$@" > "$f"; s=$?; if [ "$s" -eq 0 ]; then base64 < "$f"; fi; rm -f "$f"; exit "$s"'
 
 /** git through a machine's process call, as {@link localGit} runs it here. */
 function machineGit(machine: WorkbenchMachine): GitRunner {
   return async (cwd, args) => {
-    const result = await machine.runProcess({ argv: ['git', ...args], cwd, timeoutMs: 30_000, maxBuffer: 32 * 1024 * 1024 })
+    const show = args.includes('show')
+    // The box is Linux whatever this host is, so sh and base64 are there.
+    const argv = show ? ['sh', '-c', SHOW_AS_BASE64, 'git', ...args] : ['git', ...args]
+    const result = await machine.runProcess({ argv, cwd, timeoutMs: 30_000, maxBuffer: 32 * 1024 * 1024 })
     if (result.exitCode !== 0) throw new Error(result.stderr.trim() || `git exited with ${result.exitCode}`)
-    return Buffer.from(result.stdout, 'utf8')
+    return show ? Buffer.from(result.stdout.trim(), 'base64') : Buffer.from(result.stdout, 'utf8')
   }
 }
 
@@ -65,6 +78,7 @@ export const fileRoutes = {
           fs: machine.fs,
           git: machineGit(machine),
           listing: { key: machine.key, runProcess: machine.runProcess, ripgrep: machine.ripgrep ?? 'rg' },
+          ...(machine.maxFileBytes ? { maxFileBytes: machine.maxFileBytes } : {}),
         })
       } finally {
         machine.release?.()
@@ -222,7 +236,7 @@ const fileRoute = (open: Open): Handler => async (req, res, url) => {
     return
   }
   try {
-    sendFile(res, await open(workspace, req, ({ fs }) => readWorkspaceFile(fs, path)))
+    sendFile(res, await open(workspace, req, ({ fs, maxFileBytes }) => readWorkspaceFile(fs, path, maxFileBytes)))
   } catch (error) {
     if (!(error instanceof FileServeError)) throw error
     sendError(res, error.status, error.message)
@@ -248,7 +262,7 @@ const uploadRoute = (open: Open): Handler => async (req, res, url) => {
     }
     const name = body.name
     const data = Buffer.from(body.data, 'base64')
-    sendJson(res, 200, await open(workspace, req, ({ fs }) => saveUpload(fs, name, data)))
+    sendJson(res, 200, await open(workspace, req, ({ fs, maxFileBytes }) => saveUpload(fs, name, data, maxFileBytes)))
   } catch (error) {
     if (error instanceof FileServeError || error instanceof HttpError) {
       sendError(res, error.status, error.message)

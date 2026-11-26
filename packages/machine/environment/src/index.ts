@@ -224,16 +224,18 @@ export function githubCredentials(token: string): ResolvedCredential[] {
  * The egress proxy's keys for an environment, with each `${NAME}` filled from
  * the user's secrets. A credential naming a secret the user has not given is
  * left out and reported in `missing`, never sent with the reference in it.
- * Credentials for one host are merged into one entry.
+ * Credentials for one host are merged into one entry. `used` names the
+ * secrets of the credentials that were filled in, and only those.
  */
 export function egressCredentials(
   environment: Environment,
   secrets: ReadonlyArray<{ name: string; value: string }>,
-): { credentials: ResolvedCredential[]; missing: string[] } {
+): { credentials: ResolvedCredential[]; missing: string[]; used: string[] } {
   const values: Record<string, string> = Object.create(null)
   for (const secret of secrets) values[secret.name] = secret.value
   const byHost = new Map<string, Record<string, string>>()
   const missing = new Set<string>()
+  const used = new Set<string>()
   for (const credential of environment.network.credentials) {
     const names = [...credential.value.matchAll(SECRET_REF)].map(match => match[1] ?? '')
     const absent = names.filter(name => values[name] === undefined)
@@ -247,10 +249,12 @@ export function egressCredentials(
     const headers = byHost.get(credential.host) ?? {}
     headers[credential.header] = value
     byHost.set(credential.host, headers)
+    for (const name of names) used.add(name)
   }
   return {
     credentials: [...byHost].map(([host, headers]) => ({ host, headers })),
     missing: [...missing].sort(),
+    used: [...used].sort(),
   }
 }
 

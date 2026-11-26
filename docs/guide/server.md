@@ -241,7 +241,8 @@ HTTPS, and `TNEGA_BOX_ADDRESS` must be the server's public IPv4 for the egress
 proxy. An E2B box has its own volume, so the Workbench shows the files in
 your box (the file tree, Changes and `@` file search, with git and ripgrep
 run in the box) while the box runs. Looking never wakes a box: while it
-sleeps, the Workbench says so until the next run wakes it.
+sleeps, the Workbench says so (503) until the next run wakes it. One file
+moves in one daemon message, so files over 16 MiB are refused (413).
 
 How it fits together:
 

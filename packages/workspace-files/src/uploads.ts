@@ -48,8 +48,9 @@ export interface SavedUpload {
   size: number
 }
 
-export async function saveUpload(fs: WorkspaceFs, name: string, bytes: Uint8Array): Promise<SavedUpload> {
-  if (bytes.byteLength > MAX_UPLOAD_BYTES) throw new FileServeError(`file exceeds ${MAX_UPLOAD_BYTES} bytes`, 413)
+export async function saveUpload(fs: WorkspaceFs, name: string, bytes: Uint8Array, maxBytes = MAX_UPLOAD_BYTES): Promise<SavedUpload> {
+  const limit = Math.min(maxBytes, MAX_UPLOAD_BYTES)
+  if (bytes.byteLength > limit) throw new FileServeError(`file exceeds ${limit} bytes`, 413)
   const safe = safeUploadName(name)
   await checkInside(fs, UPLOADS_DIR)
   await fs.mkdir(UPLOADS_DIR)

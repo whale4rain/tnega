@@ -97,18 +97,33 @@ it('shows the files, changes and file search of a box that keeps its own volume'
   const changes = await (await query('/api/changes')).json() as { git: boolean; files: Array<{ path: string; status: string }> }
   expect(changes.git).toBe(true)
   expect(changes.files.map(file => [file.path, file.status])).toEqual([['a.txt', 'modified'], ['new.md', 'untracked']])
-  expect(await (await query('/api/changes/file', '&path=a.txt')).json()).toMatchObject({ original: 'one\n', modified: 'one\ntwo\n' })
+  // A box is Linux: the committed side comes back through sh and base64, which a Windows host running this test may lack.
+  if (process.platform !== 'win32') {
+    expect(await (await query('/api/changes/file', '&path=a.txt')).json()).toMatchObject({ original: 'one\n', modified: 'one\ntwo\n' })
+  }
 
   expect(await (await query('/api/files/search', '&q=new')).json()).toEqual({ files: ['new.md'] })
   // Every request let go of its lease.
-  expect(released).toBe(5)
+  expect(released).toBe(process.platform === 'win32' ? 4 : 5)
 })
 
 it('answers with the resolver\'s error when the box sleeps', async () => {
   const onHost = await tempDir()
-  const base = await serve({ machine: async () => { throw new FileServeError('your box for this folder is not running', 409) } })
+  const base = await serve({ machine: async () => { throw new FileServeError('your box for this folder is not running', 503) } })
   for (const path of ['/api/files/tree', '/api/changes', '/api/files/search']) {
     const response = await fetch(`${base}${path}?workspace=${encodeURIComponent(onHost)}`)
-    expect(response.status).toBe(409)
+    expect(response.status).toBe(503)
   }
+})
+
+it('answers 413 for a file larger than one daemon message can carry', async () => {
+  const inBox = await tempDir()
+  const onHost = await tempDir()
+  await writeFile(join(inBox, 'big.pdf'), Buffer.alloc(64))
+  const link = await box(inBox)
+  const base = await serve({
+    machine: async () => ({ ...boxWorkbench({ machineId: 'm1', deviceId: 'd1', link, workspacePath: inBox, release: () => undefined }), maxFileBytes: 32 }),
+  })
+  const response = await fetch(`${base}/api/files?workspace=${encodeURIComponent(onHost)}&path=big.pdf`)
+  expect(response.status).toBe(413)
 })

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { acceptDaemon, memoryTransportPair, type DaemonLink } from '@tnega/daemon-protocol'
 import { remotePipes } from '@tnega/process-remote'
-import { startDaemon } from '../src/index.js'
+import { exposePipes, startDaemon } from '../src/index.js'
 
 const dirs: string[] = []
 const cleanups: Array<() => Promise<void> | void> = []
@@ -110,4 +110,41 @@ it('starts processes only inside a workspace it serves, and says when a program 
   if (!launch) throw new Error('expected pipes')
   await expect(launch({ argv: [process.execPath, '-e', ''], cwd: other }, { onStdout: () => undefined })).rejects.toThrow(/not inside a workspace/)
   await expect(launch({ argv: ['tnega-no-such-program'], cwd: dir }, { onStdout: () => undefined })).rejects.toThrow(/could not start tnega-no-such-program/)
+})
+
+it('kills and forgets a process nobody attaches to in time', async () => {
+  const dir = await tempDir()
+  const pipes = exposePipes([{ id: 'w', path: dir }], { attachGraceMs: 100 })
+  cleanups.push(() => pipes.dispose())
+  const signal = new AbortController().signal
+  const start = pipes.service.calls.start
+  const attach = pipes.service.streams?.attach
+  if (!start || !attach) throw new Error('expected start and attach')
+  // A process that stays: the runtime went away before it attached.
+  const id = await start([dir, [process.execPath, '-e', 'setInterval(() => undefined, 1000); process.stdout.write(String(process.pid))'], {}], { signal })
+  if (typeof id !== 'string') throw new Error('expected an id')
+  await new Promise(resolve => setTimeout(resolve, 300))
+  await expect(Promise.resolve().then(() => attach([id], () => undefined, () => undefined))).rejects.toThrow(/no process/)
+  // One that exited before anyone followed is forgotten too, once the grace is over.
+  const quick = await start([dir, [process.execPath, '-e', ''], {}], { signal })
+  await new Promise(resolve => setTimeout(resolve, 300))
+  await expect(Promise.resolve().then(() => attach([quick], () => undefined, () => undefined))).rejects.toThrow(/no process/)
+})
+
+it('keeps a process that is followed in time past the grace', async () => {
+  const dir = await tempDir()
+  const pipes = exposePipes([{ id: 'w', path: dir }], { attachGraceMs: 100 })
+  cleanups.push(() => pipes.dispose())
+  const start = pipes.service.calls.start
+  const attach = pipes.service.streams?.attach
+  if (!start || !attach) throw new Error('expected start and attach')
+  const id = await start([dir, [process.execPath, '-e', ECHO], {}], { signal: new AbortController().signal })
+  let ended: string | undefined
+  let out = ''
+  const stop = await attach([id], event => { out += (event as { data: string }).data }, reason => { ended = reason })
+  await new Promise(resolve => setTimeout(resolve, 300))
+  expect(ended).toBeUndefined()
+  pipes.service.calls.write?.([id, 'hi\n'], { signal: new AbortController().signal })
+  await expect.poll(() => out).toContain('HI')
+  stop()
 })

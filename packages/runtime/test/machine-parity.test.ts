@@ -301,3 +301,24 @@ it('gives a box\'s commands placeholders for the keys its egress proxy adds, and
     await fiber.dispose()
   }
 })
+
+it('gives the placeholders even to a scope with no secret store, as a Project thread runs', async () => {
+  const dir = await tempDir()
+  const loopback = await loopbackDaemon([dir])
+  cleanups.push(() => loopback.close())
+  const ctx = new Context()
+  const fiber = ctx.plugin(runtimeCapabilities, {
+    workspace: dir,
+    machine: { link: loopback.link, isolated: true, secrets: { withholdOthers: true, proxied: async () => ['GITHUB_TOKEN'] } },
+    permission: 'bypass',
+    builtin: { allowShell: true },
+    search: false, skills: false, office: false, spill: false,
+  })
+  await fiber
+  try {
+    const result = await ctx.get('tools').execute('shell', { command: 'node -e "console.log(process.env.GITHUB_TOKEN)"' })
+    expect(JSON.parse(renderToolResult(result))).toMatchObject({ exitCode: 0, stdout: 'tnega-egress-adds-GITHUB_TOKEN\n' })
+  } finally {
+    await fiber.dispose()
+  }
+})

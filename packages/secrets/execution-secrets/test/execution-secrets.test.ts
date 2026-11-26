@@ -77,3 +77,10 @@ it('keeps keys the egress proxy adds out of a box: commands see a placeholder, n
   expect(ctx.secrets.injectedEntries()).toEqual([])
   await fiber.dispose()
 })
+
+it('gives a scope with no store of its own (a Project thread) the proxy\'s placeholders', async () => {
+  const { inner, shells } = recorder()
+  const execution = secretEnvExecution(new Context(), inner, { proxied: () => ['GITHUB_TOKEN'], withholdOthers: true })
+  await execution.runShell({ command: 'git push', cwd: '.', env: { CI: '1' } })
+  expect(shells[0]?.env).toEqual({ GITHUB_TOKEN: 'tnega-egress-adds-GITHUB_TOKEN', CI: '1' })
+})

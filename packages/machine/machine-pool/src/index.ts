@@ -7,7 +7,7 @@ import type { AccountService } from '@tnega/accounts'
 import type { DaemonLink } from '@tnega/daemon-protocol'
 import type { DaemonRegistry } from '@tnega/daemons'
 import { startEgressProxy, type EgressPolicy, type EgressProxy, type KeyPairPem } from '@tnega/egress-proxy'
-import { DEFAULT_SETUP_HOSTS, ENVIRONMENT_FILE, GITHUB_TOKEN_SECRET, egressCredentials, githubCredentials, parseEnvironment, proxiedSecretNames, type Environment } from '@tnega/environment'
+import { DEFAULT_SETUP_HOSTS, ENVIRONMENT_FILE, GITHUB_TOKEN_SECRET, egressCredentials, githubCredentials, parseEnvironment, type Environment } from '@tnega/environment'
 import { MachineError, type BoxIsolation, type BoxNetwork, type BoxResources, type BoxSpec, type MachineService } from '@tnega/machine'
 import { millis, optionalText, poolClient, text, type SqlClient, type SqlQueryable } from './sql.js'
 import { LeasedLink } from './leased-link.js'
@@ -241,8 +241,9 @@ export class MachinePool extends Service {
     if (environment?.network.credentials.length) {
       const resolved = egressCredentials(environment, Object.entries(secrets).map(([name, value]) => ({ name, value })))
       credentials = resolved.credentials
-      const missing = new Set(resolved.missing)
-      for (const name of proxiedSecretNames(environment)) if (!missing.has(name)) names.add(name)
+      // Only a credential the proxy really adds gets a placeholder; one
+      // missing a secret is left out whole, with the secrets it does have.
+      for (const name of resolved.used) names.add(name)
     }
     // A remembered GITHUB_TOKEN lets git and gh in the box reach GitHub, unless the environment says otherwise for that host.
     const token = secrets[GITHUB_TOKEN_SECRET]
@@ -281,6 +282,29 @@ export class MachinePool extends Service {
    */
   async refreshPolicies(): Promise<void> {
     if (this.network !== 'egress') return
+    // One pass at a time: two overlapping passes could let the slower one
+    // write a key back after the faster one dropped it. A change during a
+    // pass asks for one more pass, which reads the store afresh.
+    this.refreshAgain = true
+    if (!this.refreshing) {
+      this.refreshing = (async () => {
+        try {
+          while (this.refreshAgain) {
+            this.refreshAgain = false
+            await this.refreshOnce()
+          }
+        } finally {
+          this.refreshing = undefined
+        }
+      })()
+    }
+    return this.refreshing
+  }
+
+  private refreshing: Promise<void> | undefined
+  private refreshAgain = false
+
+  private async refreshOnce(): Promise<void> {
     const { rows } = await this.sql.query(`select ${COLUMNS} from machine where state <> 'cold' and egress_hash is not null`)
     for (const raw of rows) {
       const row = rowFrom(raw)

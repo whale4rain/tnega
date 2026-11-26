@@ -11,6 +11,9 @@ export type PipeEvent = { type: 'stdout' | 'stderr'; data: string }
 /** Output a process makes before anyone follows it, kept until the first follower. */
 const EARLY_OUTPUT_LIMIT = 1024 * 1024
 
+/** How long a started process waits for its follower before it is killed and forgotten. */
+export const ATTACH_GRACE_MS = 30_000
+
 interface Piped {
   child: ChildProcessWithoutNullStreams
   /** Output from before the follower attached. */
@@ -20,6 +23,8 @@ interface Piped {
   /** Set once the process is gone: how the stream ends. */
   exit: string | undefined
   onExit: Set<(reason: string) => void>
+  /** Kills and forgets the process if nobody attaches in time. */
+  unattached: ReturnType<typeof setTimeout> | undefined
 }
 
 function text(value: unknown, field: string): string {
@@ -62,10 +67,21 @@ function kill(child: ChildProcessWithoutNullStreams): void {
  * streams the output (anything written before it is kept for it) and ends
  * when the process exits; `write` feeds stdin; `close`, or the end of the
  * stream, kills the process and its children. Closing the daemon kills them
- * all.
+ * all. A process nobody attaches to within `attachGraceMs` (a runtime that
+ * went away between `start` and `attach`) is killed and forgotten, as is the
+ * exit of one that ended before anyone followed it.
  */
-export function exposePipes(workspaces: readonly DaemonWorkspace[]): { service: ExposedService; dispose(): void } {
+export function exposePipes(
+  workspaces: readonly DaemonWorkspace[],
+  options: { attachGraceMs?: number } = {},
+): { service: ExposedService; dispose(): void } {
+  const graceMs = options.attachGraceMs ?? ATTACH_GRACE_MS
   const pipes = new Map<string, Piped>()
+  const forget = (id: string, entry: Piped): void => {
+    if (entry.unattached) clearTimeout(entry.unattached)
+    entry.unattached = undefined
+    if (pipes.get(id) === entry) pipes.delete(id)
+  }
   const inside = async (path: string): Promise<string> => {
     for (const workspace of workspaces) {
       try {
@@ -97,7 +113,7 @@ export function exposePipes(workspaces: readonly DaemonWorkspace[]): { service: 
           windowsHide: true,
         })
         const id = randomUUID()
-        const entry: Piped = { child, early: [], earlyBytes: 0, follower: undefined, exit: undefined, onExit: new Set() }
+        const entry: Piped = { child, early: [], earlyBytes: 0, follower: undefined, exit: undefined, onExit: new Set(), unattached: undefined }
         const deliver = (event: PipeEvent): void => {
           if (entry.follower) { entry.follower(event); return }
           entry.early.push(event)
@@ -117,12 +133,22 @@ export function exposePipes(workspaces: readonly DaemonWorkspace[]): { service: 
         }
         child.on('error', error => finish(`failed: ${error.message}`))
         child.on('close', (code, signal) => finish(signal ? `killed by ${signal}` : `exited with ${code ?? 0}`))
-        pipes.set(id, entry)
         // A program that is not there fails on the next tick; say so to the caller, not to a stream.
         await new Promise<void>((resolve, reject) => {
-          child.once('spawn', () => resolve())
-          child.once('error', error => { pipes.delete(id); reject(new RpcError(`could not start ${command}: ${error.message}`, RpcErrorCode.INVALID_PARAMS)) })
+          const started = (): void => { child.off('error', failed); resolve() }
+          const failed = (error: Error): void => {
+            child.off('spawn', started)
+            reject(new RpcError(`could not start ${command}: ${error.message}`, RpcErrorCode.INVALID_PARAMS))
+          }
+          child.once('spawn', started)
+          child.once('error', failed)
         })
+        pipes.set(id, entry)
+        entry.unattached = setTimeout(() => {
+          forget(id, entry)
+          kill(entry.child)
+        }, graceMs)
+        entry.unattached.unref?.()
         return id
       },
       write: ([id, data]) => {
@@ -134,7 +160,7 @@ export function exposePipes(workspaces: readonly DaemonWorkspace[]): { service: 
         const key = text(id, 'id')
         const entry = pipes.get(key)
         if (entry) {
-          pipes.delete(key)
+          forget(key, entry)
           kill(entry.child)
         }
         return null
@@ -142,13 +168,16 @@ export function exposePipes(workspaces: readonly DaemonWorkspace[]): { service: 
     },
     streams: {
       attach: ([id], emit, end) => {
-        const entry = piped(id)
-        if (entry.follower) throw new RpcError(`process ${String(id)} already has a follower`, RpcErrorCode.INVALID_PARAMS)
+        const key = text(id, 'id')
+        const entry = piped(key)
+        if (entry.follower) throw new RpcError(`process ${key} already has a follower`, RpcErrorCode.INVALID_PARAMS)
+        if (entry.unattached) clearTimeout(entry.unattached)
+        entry.unattached = undefined
         for (const event of entry.early.splice(0)) emit(event)
         entry.earlyBytes = 0
         entry.follower = emit
         const ended = (reason: string): void => {
-          pipes.delete(text(id, 'id'))
+          forget(key, entry)
           end(reason)
         }
         if (entry.exit !== undefined) {
@@ -159,7 +188,7 @@ export function exposePipes(workspaces: readonly DaemonWorkspace[]): { service: 
         // Nobody reads it any more (closed, or the connection never came back): the process goes too.
         return () => {
           entry.onExit.delete(ended)
-          pipes.delete(text(id, 'id'))
+          forget(key, entry)
           kill(entry.child)
         }
       },
@@ -168,8 +197,10 @@ export function exposePipes(workspaces: readonly DaemonWorkspace[]): { service: 
   return {
     service,
     dispose: () => {
-      for (const entry of pipes.values()) kill(entry.child)
-      pipes.clear()
+      for (const [id, entry] of [...pipes]) {
+        forget(id, entry)
+        kill(entry.child)
+      }
     },
   }
 }

@@ -152,7 +152,19 @@ describe('egressCredentials', () => {
     expect(egressCredentials(environment, [{ name: 'GITHUB_TOKEN', value: 'ghp_1' }, { name: 'EXTRA_KEY', value: 'x-1' }])).toEqual({
       credentials: [{ host: 'api.github.com', headers: { authorization: 'Bearer ghp_1', 'x-extra': 'x-1' } }],
       missing: ['NPM_TOKEN'],
+      used: ['EXTRA_KEY', 'GITHUB_TOKEN'],
     })
+  })
+
+  it('names as used only the secrets of credentials it could fill in whole', () => {
+    const pair = parseEnvironment([
+      '[[network.credentials]]',
+      'host = "api.example.com"',
+      'header = "authorization"',
+      'value = "${KEY_ID}:${KEY_SECRET}"',
+    ].join('\n'))
+    // KEY_ID is there but the credential needs KEY_SECRET too: nothing is added, so nothing is used.
+    expect(egressCredentials(pair, [{ name: 'KEY_ID', value: 'id' }])).toEqual({ credentials: [], missing: ['KEY_SECRET'], used: [] })
   })
 
   it('refuses a secret that would break out of its header', () => {

@@ -700,10 +700,12 @@ export async function runResidentTurn(
   let releaseWriteCapture: ReturnType<ToolsService['guard']> | undefined
 
   let box: BoxRun | undefined
+  let residentRoot: Context | undefined
   try {
     box = await boxFor(context, workspace, id, req.accountId, controller.signal)
     if (box) req = { ...req, box }
     const entry = await ensureResidentAgent(context, workspace, id, req)
+    residentRoot = entry.root
     ptcObservation = await observePtc(entry.root, id, event => {
       if (!res.destroyed && !res.writableEnded) writeSse(res, event)
     })
@@ -790,7 +792,15 @@ export async function runResidentTurn(
     }
     detachApproval()
     context.activeRuns.delete(key)
-    box?.release()
+    // Subagents outlive the turn that started them and run in the same box:
+    // keep the lease until the last one settles, so the box never pauses under one.
+    const subagents = residentRoot?.get('subagents', false)
+    if (box && subagents) {
+      const lease = box
+      void subagents.settled().finally(() => lease.release())
+    } else {
+      box?.release()
+    }
     markReady(false)
     context.steeringReady.delete(key)
     if (!res.destroyed && !res.writableEnded) res.end()

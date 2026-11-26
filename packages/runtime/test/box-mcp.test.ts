@@ -69,3 +69,17 @@ it('goes without MCP servers on a box image that cannot run them', async () => {
   const inBox = await tempDir()
   expect(boxMcp({ link: await box(inBox, false), isolated: true }, inBox)).toBeUndefined()
 })
+
+it('gives box servers the egress proxy\'s placeholders, with mcp.json winning', async () => {
+  const inBox = await tempDir()
+  const options = boxMcp({ link: await box(inBox, true), isolated: true, secrets: { withholdOthers: true, proxied: async () => ['GITHUB_TOKEN'] } }, inBox)
+  if (!options) throw new Error('expected the box to run MCP servers')
+  const started: Array<Readonly<Record<string, string>> | undefined> = []
+  const runtime = await connectMcpServers(inBox, undefined, {
+    ...options,
+    readConfig: async () => ({ mcpServers: { fixture: { command: process.execPath, args: [fixture], env: { OWN: '1' } } } }),
+    launch: (request, handlers) => { started.push(request.env); return options.launch(request, handlers) },
+  })
+  cleanups.push(() => runtime.dispose())
+  expect(started).toEqual([{ GITHUB_TOKEN: 'tnega-egress-adds-GITHUB_TOKEN', OWN: '1' }])
+})

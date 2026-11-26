@@ -275,6 +275,39 @@ describe('machine pool keys', () => {
     expect(pool.egressPolicy(spec.network.egress.token)).toBeUndefined()
   })
 
+  it('never lets a slow refresh put back a key a later one removed', async () => {
+    const root = createRootCertificate()
+    const secrets: Record<string, string> = {}
+    let hold: Promise<void> | undefined
+    const pool = await openPool({
+      egress: { listen: { host: '127.0.0.1', port: 0 }, advertise: '10.0.0.5', root, allow: ['registry.npmjs.org'] },
+      rememberedSecrets: async () => {
+        const seen = { ...secrets }
+        if (hold) await hold
+        return seen
+      },
+    })
+    const lease = await pool.acquire({ accountId: mia.id, workspace: dir })
+    const spec = [...machines.boxes.values()][0]?.spec
+    if (spec?.network.mode !== 'egress') throw new Error('expected an egress box')
+
+    // The first refresh reads the store while the key is saved, then stalls.
+    secrets.GITHUB_TOKEN = 'ghp_example'
+    let release: () => void = () => undefined
+    hold = new Promise(resolve => { release = resolve })
+    const slow = pool.refreshPolicies()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    // The key is removed and a second refresh asked for while the first stalls.
+    delete secrets.GITHUB_TOKEN
+    hold = undefined
+    const later = pool.refreshPolicies()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    release()
+    await Promise.all([slow, later])
+    expect(pool.egressPolicy(spec.network.egress.token)?.credentials).toEqual([])
+    lease.release()
+  })
+
   it('names no proxied secrets when boxes have no egress proxy', async () => {
     const pool = await openPool({ rememberedSecrets: async () => ({ GITHUB_TOKEN: 'ghp_example' }) })
     expect(await pool.proxiedSecrets(dir)).toEqual([])
