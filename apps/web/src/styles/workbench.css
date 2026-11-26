@@ -42,8 +42,8 @@
   transition: visibility 0s linear calc(var(--duration-panel) + 60ms);
 }
 
-/* The panel: the conversation's tone, round corners, no outline and no shadow (§3.8); the cards and the
-   selected tab inside it stand one tone up. Its 6px inset keeps the cards concentric:
+/* The panel: the conversation's tone, round corners and the same floating panel shadow (foundations.md,
+   Elevation); the cards and the selected tab inside it stand one tone up with the small step. Its 6px inset keeps the cards concentric:
    --radius-2xl (22) − 6 = --radius-xl (16). */
 .wb-frame {
   display: flex;
@@ -55,6 +55,7 @@
   overflow: hidden;
   border-radius: var(--radius-2xl);
   background: var(--bg);
+  box-shadow: var(--shadow-panel);
 }
 
 .wb-resize {
@@ -161,6 +162,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font-weight: 600;
+  box-shadow: var(--shadow-xs);
 }
 
 /* Tools used less are round icon buttons; the name is in the tooltip and accessible label.
@@ -400,6 +402,7 @@
   min-height: 0;
   border-radius: var(--radius-xl);
   background: var(--surface);
+  box-shadow: var(--shadow-xs);
   overflow: hidden;
 }
 

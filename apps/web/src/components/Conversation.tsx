@@ -13,6 +13,8 @@ import {
   Trash2,
   X,
   PanelLeft,
+  PanelRightClose,
+  PanelRightOpen,
 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError, streamRun } from '../lib/api'
@@ -1252,9 +1254,10 @@ function ContextMeter({ context, metrics, usage }: { context: ContextUsage; metr
 }
 
 /**
- * The Workbench toggle (Umbrella conversation header): an ink pill that says
- * "Work · N" (files changed since the last commit), led by the mark of the
- * busiest state inside it. Ctrl+J does the same from anywhere.
+ * The Workbench toggle (Umbrella conversation header): a pill with the side-panel icon and the
+ * word "Workbench", so it reads as "open the panel on the right", then the count of files changed
+ * since the last commit and the mark of the busiest state inside. Sunken while the panel is
+ * closed, ink while it is open. Ctrl+J does the same from anywhere.
  */
 function WorkPill({ open, count, busiest, onToggle }: {
   open: boolean
@@ -1272,8 +1275,9 @@ function WorkPill({ open, count, busiest, onToggle }: {
       aria-pressed={open}
       title={changed ? `${open ? 'Hide' : 'Open'} the Workbench · ${changed} changed ${changed === 1 ? 'file' : 'files'} · Ctrl J` : `${open ? 'Hide' : 'Open'} the Workbench · Ctrl J`}
     >
-      {busiest && <PenMark kind={busiest} size={16} />}
-      <span>Work{changed ? ` · ${changed > 99 ? '99+' : changed}` : ''}</span>
+      {open ? <PanelRightClose size={15} aria-hidden /> : <PanelRightOpen size={15} aria-hidden />}
+      <span>Workbench{changed ? <span className="work-pill-count"> · {changed > 99 ? '99+' : changed}</span> : null}</span>
+      {busiest && <PenMark kind={busiest} size={14} />}
     </button>
   )
 }

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tnega-icon.png" alt="Tnega：几何切片云" width="112" />
+  <img src="assets/tnega-icon.png" alt="Tnega：横切一刀的几何云" width="112" />
 </p>
 
 <h1 align="center">Tnega</h1>
@@ -44,7 +44,7 @@
 
 ![项目主对话与右侧 Board，展示 Pull Request 卡片与 Thread 状态](assets/projects.png)
 
-界面采用 **Umbrella** 设计语言：无外框无阴影的色调层级、圆角悬浮面板，以及用手工笔迹（`PenMark`）标出状态、计划与待确认事项。浅色、深色与跟随系统主题提供六套调色板：**Umbrella**（默认）、Carbon、Sky、Sand、Forest 与 Graphite。密度、字号与阅读宽度均可调节，一套天气状态语言让你一眼看出每个 Agent 在做什么。
+界面采用 **Umbrella** 设计语言：无外框的色调层级、带柔和高度的圆角悬浮面板，以及用手工笔迹（`PenMark`）标出状态、计划与待确认事项。浅色、深色与跟随系统主题提供六套调色板：**Umbrella**（默认）、Carbon、Sky、Sand、Forest 与 Graphite。密度、字号与阅读宽度均可调节，一套天气状态语言让你一眼看出每个 Agent 在做什么。
 
 ## 安装
 

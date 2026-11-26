@@ -361,3 +361,15 @@ it('keeps turn actions as round buttons with names, and fork as a worded pill', 
   fireEvent.click(view.getByRole('button', { name: 'Fork from here' }))
   expect(onFork).toHaveBeenCalledWith('m1')
 })
+
+it('holds back half-written Markdown while a reply streams, and shows no Working line under it', () => {
+  const entries: Entry[] = [{
+    kind: 'agent', id: 'agent-live', turn: 1, status: 'running',
+    blocks: [{ kind: 'text', id: 'answer', text: 'Umbrellas shed rain.\n\n**How they', streaming: true }],
+  }]
+  const view = render(createElement(Timeline, { entries, running: true, actions: {} }))
+  const reply = view.container.querySelector('.streaming')
+  expect(reply?.textContent).toContain('How they')
+  expect(reply?.textContent).not.toContain('**')
+  expect(view.queryByText('Working')).toBeNull()
+})

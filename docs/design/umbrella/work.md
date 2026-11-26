@@ -11,7 +11,7 @@ The one component for "a piece of work". It appears in the conversation (as a th
             What it is doing now, 13 --text-2
 ```
 
-- Min height 56, padding 8 12, radius 14, gap 12.
+- Min height 60, padding 10 14, radius 14, gap 12. Rows in a list are 8 apart.
 - The mark says the state (see [hand-layer.md](hand-layer.md)). It appears **once**. The old card that showed a status light *and* an icon with "Done" is gone.
 - The second line is the current step while working, the question while waiting on you, the result when done, the reason when failed (in `--danger`).
 - The time is right-aligned, 12 `--text-3`: how long it has waited on you, when it is due, or when it finished.
@@ -25,7 +25,7 @@ A work row inside a white card (padding 4, radius 16, width 330–460), at the p
 
 The Board answers "what needs me, what is moving", in that order.
 
-1. Title: the project name in 22/700, then "6 going" in `--text-3`.
+1. Title: the project name in 22/700, then "6 going" in `--text-3`. Groups are 32 apart; their headers are quiet 12.5/600 `--text-3` labels, as in the sidebar.
 2. **Your turn** (count): white work rows with the `you` mark.
 3. **On it** (count): flat work rows with the `working` mark.
 4. **Waiting on others** (count): flat rows with the `waiting` mark.

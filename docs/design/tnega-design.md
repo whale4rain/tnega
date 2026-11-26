@@ -27,7 +27,7 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。2026-11-22 起�
 
 界面分成**两层**，这是 Umbrella 的核心：
 
-1. **排版层是精确的。** 布局、面板、卡片、输入框、按钮、文字都是干净的几何形状：灰色的地面，近白的面，一种墨色，没有阴影、没有渐变、没有描边框。它像一张排好版的页面，安静地待在操作系统自己的完美圆角、窗口与键盘旁边。
+1. **排版层是精确的。** 布局、面板、卡片、输入框、按钮、文字都是干净的几何形状：灰色的地面，近白的面，一种墨色，没有渐变、没有描边框；凸起的形状只有一圈细环加一层柔和的阴影（2026-11-24 起，见 §3.8 阴影）。它像一张排好版的页面，安静地待在操作系统自己的完美圆角、窗口与键盘旁边。
 2. **手绘层只标出要紧的事。** 状态记号、圈出“等你”的那一个、打勾、在两个关键词下面划线、进度的排线，全部用同一支笔手绘，落在排版层**上面、形状之内**，像有人拿笔在打印稿上做标记。手绘从不画形状的外框。
 
 为什么不把边框也画成手绘：屏幕上的东西挨得很近，每条边都抖，页面就变成草图，真正该说“这件事等你”的那一圈反而淹没在二十个圈里。只有底下的页面是静止的，笔迹才有意义。所有手绘都是 Agent 写给你的批注——这给了整套语言它的感觉：一个安静、精确的应用，有一只手轻轻指着要紧的事。
@@ -36,13 +36,13 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。2026-11-22 起�
 
 ## 2. 标识：切片云
 
-- 品牌标志是一朵**瑞士几何切片云**（2026-11-23 起）：不对称双穹平底积云轮廓，被等距水平负空间切分成 6 道（≥32px，欢迎页与安装包图标）或 5 道加粗（<32px，侧栏、对话头像与 favicon）墨色横条。无卡通五官、无描边、无渐变，在 16px 到 1024px 都清晰克制。
+- 品牌标志是一朵**瑞士几何切片云**（2026-11-23 起）：不对称双穹平底积云轮廓，被一道水平负空间横切成两段墨色（2026-11-24 起：上段是较高的穹顶，下段是一条平带；切口在 64 视框的 y=33.2、高 4，`BRAND_CLOUD_CUTS`）。所有尺寸用同一刀：此前的 6 道 / 5 道细切口在 24px 以下糊成一团。无卡通五官、无描边、无渐变，在 16px 到 1024px 都清晰克制。
 - **载板**：侧栏与对话主 Agent 头像直接以裸形墨色切片云落面；欢迎页（64px）与桌面端安装包图标（`apps/desktop/build/icon.svg`）放在一枚浅色圆角方片上（`--surface-raised` / `#f3f3f1` 配极淡描边）。
 - 任务栏角标（`apps/desktop/build/completion-*.png`，由 `scripts/render-completion-icons.mjs` 生成）只画天气本身——雨滴、闪电、雪花，放在小深色圆片上——任务栏上始终只有一朵云。桌面通知不闪烁任务栏按钮（Windows 把它画成橙红色，像警报），提示音是应用自己合成的两声轻音，不用系统提示音。
 - 来源：
   - 品牌标志：`apps/web/src/styles/app.css` 的 `--brand-cloud`（云形遮罩）与 `--brand-cloud-cuts`（水平切片遮罩），用当前调色板的 `--accent` 填色（Umbrella 调色板里就是墨色），水平切片以 `mask-composite: exclude` 镂空，露出背后的底色，在任何调色板和明暗下都成立。
   - 欢迎页与头像共享路径：`apps/web/src/lib/avatar.ts` 的 `BRAND_CLOUD`、`BRAND_CLOUD_CUTS_LARGE` 与 `BRAND_CLOUD_CUTS_SMALL`。欢迎页（`Welcome.tsx`）的云轻轻漂浮，`prefers-reduced-motion` 下静止。改标志时与 CSS 遮罩一起改。
-  - favicon：`apps/web/index.html`；安装包图标：`apps/desktop/build/icon.svg`，浅灰圆角方片上的 6 条墨色切片云，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
+  - favicon：`apps/web/index.html`；安装包图标：`apps/desktop/build/icon.svg`，浅灰圆角方片上横切一刀的墨色云，用 `node apps/desktop/scripts/render-icon.mjs` 生成 `icon.png` 与多尺寸 `icon.ico`。
 - 会话主 Agent 画成切片云（`AgentAvatar` 的 `brand`）；会话里的子 Agent 保留随机的形状和颜色（圆、软方、斜方、软糖、云、水滴），便于区分。
 - **Project 里不画 Agent 头像**（2026-10-09 起）：Project 是任务驱动的，协调者只负责转派，Thread 用标题和手绘状态记号辨认（§3.9、§5.7）。
 
@@ -95,7 +95,7 @@ Tnega 是一个让人长时间和 Agent 一起工作的地方。2026-11-22 起�
 - 颜色从不单独承载含义：状态色旁边总有文字或图标（§10）。
 - **选中不描强调色**（2026-10-12 起，2026-11-22 随 Umbrella 修订）：选中的卡片或选项（打开中的 Thread 卡、默认模型路由、设置选项）只换成 `--accent-soft` 底，不加描边；调色板卡与问题选项这类需要和邻居并排比较的，再加一圈 1.5px 的内嵌墨色环（`inset box-shadow`，不占布局）；工作台的拖动条悬停时是 `--border-strong` 细线。Carbon 的 `--accent` 是墨色（深色下近白），一圈强调色描边读作粗白框 / 粗黑框，压过了内容。焦点环仍用 `--border-focus`。
 - 需要中间色时用 `color-mix(in srgb, var(--a) N%, var(--b))`，两端都必须是 token；`--usage-*` 就是这样派生的，它们会自动跟随调色板。
-- 阴影只给浮层与对话框（`--shadow-md` / `--shadow-lg`；`--shadow-sm` 是 none）；页面内的层级靠色调（§3.8），深色模式下靠明度（§3.5）。
+- 阴影是一套柔和的高度阶梯（2026-11-24 起，§3.8）：层级先靠色调（§3.8），深色模式下靠明度（§3.5），阴影只在其上给凸起的形状一条看得见的边。
 - **浮层外壳是玻璃**（2026-10-16 起）：菜单、`/` 面板、上下文用量气泡、表情菜单，以及对话框遮罩，用 `--glass-surface`（`--surface-raised` 以 `--glass-alpha` = 0.8 叠在底下）+ `backdrop-filter: blur(12px) saturate(1.4)`（`--glass-blur` / `--glass-saturate`），背后的画面透上来但不挡住内容。α 就是这笔交易的价码：0.8 时材质一眼可见，而且**对着本应用自己会画在浮层后面的每一张面**（`bg`、`bg-sidebar`、`surface`、`surface-raised`、`surface-sunken`、`code-bg`）正文仍 ≥7:1、其余角色仍 ≥4.5:1，由 `apps/web/src/styles/glass.test.ts` 逐个调色板检查。代价写在这里不藏起来：浮层压在一张照片、浏览器视图或别的窗口上时，正文可能降到约 6.5:1、三级文字约 2.7:1。
 - 玻璃只用在**外壳**上：正文所在的卡片、对话、侧栏与工作台保持不透明（`glass.test.ts` 也检查这一点）；浮层里的滚动条与吸顶标头（如 `/` 面板的标题行）用不透明底，否则滚动的行会透过来。唯一例外是 `full` 模式下的对话阅读面：它让出底色，见下一条。
 - 系统偏好 `prefers-reduced-transparency: reduce` 时全部玻璃退回不透明（`app.css` 的 Glass 段）。新增玻璃浮层要同时加进那份清单，否则 `glass.test.ts` 会失败。
@@ -200,9 +200,9 @@ Sky 写在基础选择器里，是其他调色板覆盖的底；2026-11-22 起�
 
 ### 3.8 形状与表面（Umbrella，所有调色板）
 
-形状与表面规则不随调色板变：换调色板只换颜色，Umbrella 的形状、无阴影与手绘层在每一个调色板里都成立。
+形状与表面规则不随调色板变：换调色板只换颜色，Umbrella 的形状、高度阶梯与手绘层在每一个调色板里都成立。
 
-**层级靠色调，不靠描边和阴影。** 由远及近：`--bg-sidebar`（地面：侧栏、工作台外框）→ `--bg`（面板：对话列、工作台里的阅读面）→ `--surface`（卡片：工具结果、Thread 卡、工作台里的卡片）→ `--surface-raised`（composer、浮层、对话框、需要你处理的卡片）。表单字段反过来下沉一层，用 `--surface-sunken`。相邻两层之间只有色调差，**不画外框**。
+**层级先靠色调，不靠描边。** 由远及近：`--bg-sidebar`（地面：侧栏、工作台外框）→ `--bg`（面板：对话列、工作台里的阅读面）→ `--surface`（卡片：工具结果、Thread 卡、工作台里的卡片）→ `--surface-raised`（composer、浮层、对话框、需要你处理的卡片）。表单字段反过来下沉一层，用 `--surface-sunken`。相邻两层之间只有色调差，**不画外框**。
 
 | 东西 | 形状 | 表面 | 边 |
 | --- | --- | --- | --- |
@@ -210,13 +210,13 @@ Sky 写在基础选择器里，是其他调色板覆盖的底；2026-11-22 起�
 | 卡片（工具结果、产物、提示、设置里的分组） | `--radius-xl`（16px） | `--surface` 或 `--surface-raised` | 无；只在同色调相邻、无法靠色调分开时用 `--border` 细线 |
 | 输入框、composer | `--radius-2xl`（composer）/ `--radius-lg`（表单字段）/ 胶囊（搜索框） | composer 用 `--surface-raised`；表单字段、搜索框、问题选项用 `--surface-sunken` | 无；悬停时底色加深一档，焦点用 2px 焦点环 |
 | 按钮 | 胶囊（`--radius-full`） | 主按钮实心墨色（`--accent`）；次按钮 `--surface-sunken`；幽灵按钮无底 | 无 |
-| 浮层（菜单、`/` 面板、下拉） | `--radius-xl` | `--surface-raised` | `--border` 细线 + `--shadow-md`（唯一用阴影的地方，因为它压在内容上） |
+| 浮层（菜单、`/` 面板、下拉） | `--radius-xl` | `--surface-raised` | `--shadow-md`（细环已含在阴影里） |
 | 对话框 | `--radius-2xl` | `--surface-raised` | 无边，`--shadow-lg` |
 | 标签、徽标、小芯片 | 胶囊 | `--surface-sunken` 或无底 | 无 |
 | 头像与标志的底 | 圆 | `--disc` | 无 |
 
 - 圆角阶梯：`--radius-xs` 4 · `--radius-sm` 6 · `--radius-md` 10 · `--radius-lg` 14 · `--radius-xl` 16 · `--radius-2xl` 22 · `--radius-full`。嵌套的圆角要同心：里面的圆角 = 外面的圆角 − 内边距。
-- **阴影**：`--shadow-sm` 为 none；页面内的面一律不用阴影。只有压在内容上的浮层与对话框用 `--shadow-md` / `--shadow-lg`。
+- **阴影**（2026-11-24 起改为高度阶梯；此前页面内一律无阴影，整页显得扁平廉价）：每一级是一圈 1px 细环（墨色 5–8%，深色下白色 5–8%）加一两层柔和的宽阴影，只在 `tokens.css` 的浅色与深色根上各定义一次，所有调色板共用。`--shadow-xs` 给小的凸起控件（New session、打开的会话行、分段选中项、打开的 Workbench 胶囊与标签、主按钮与发送、起手胶囊、文件卡、开关钮、工作台卡片）；`--shadow-sm` 给静置的卡片（composer、通知、审批与问题卡、结果卡、设置卡、欢迎页标志方片）；`--shadow-sm-hover` 给指针下或正在输入的（悬停的卡片与起手胶囊、聚焦的 composer）；`--shadow-panel` 给浮在地面上的对话面板与工作台外框；`--shadow-md` 给浮层；`--shadow-lg` 给对话框。仍然平的：地面、列表里的行（打开或悬停前）、你的消息气泡、下沉的输入框、芯片与标签。代码块是内嵌的：`--code-bg` 加一圈 `--code-border`。逐个组件的高度见 `docs/design/umbrella/session-inventory.md`。
 - **分隔线**留给真正的结构：表格行、列表组之间、代码与 diff 的框。卡片、面板、按钮、输入框不描边。
 - **玻璃默认关闭**（`data-glass` 默认 `off`，2026-11-22 起）：Umbrella 是平的。玻璃仍是设置里的选项，规则见 §3.2。
 
@@ -266,7 +266,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 
 ### 5.1 对话
 
-- **用户的消息是气泡**（2026-10-25 起普通 Session 也是；2026-11-22 起是**墨色气泡**）：靠右、无描边无阴影、底色 `--accent`、文字 `--text-inverse`、圆角 `--radius-xl`（右下角 `--radius-xs`），最宽约 620px；Agent 回复靠左，Session 里左侧是带天气的头像。气泡里的 Markdown 用 `Markdown` 的 `breaks`：输入时的每个换行都是换行，段落与列表之间只留 0.45em，**不用 `white-space: pre-wrap`**（它会把块之间的换行画成大段空行）。Project 里用户气泡上方再有一行时间；协调者与 Thread 的回复是铺满对话列的普通正文，**没有头像、没有气泡、没有作者行**，把空间留给内容；连续消息之间留 4–6px，不把多条消息拼成一大段。
+- **用户的消息是气泡**（2026-10-25 起普通 Session 也是；2026-11-24 起是**下沉色气泡**，此前是墨色）：靠右、无描边无阴影、底色 `--surface-sunken`、文字 `--text`（每条消息一块黑底压过了答复，长会话显得沉重廉价）、圆角 `--radius-xl`（右下角 `--radius-xs`），最宽约 620px；Agent 回复靠左，Session 里左侧是带天气的头像。气泡里的 Markdown 用 `Markdown` 的 `breaks`：输入时的每个换行都是换行，段落与列表之间只留 0.45em，**不用 `white-space: pre-wrap`**（它会把块之间的换行画成大段空行）。Project 里用户气泡上方再有一行时间；协调者与 Thread 的回复是铺满对话列的普通正文，**没有头像、没有气泡、没有作者行**，把空间留给内容；连续消息之间留 4–6px，不把多条消息拼成一大段。
 - 进行中的回合保留 Agent 的叙述文字；两段叙述之间**连续的思考与工具调用**（2026-10-23 起思考也算在内）折叠成一行：有步骤在跑时写当前步骤（“Running pnpm test · 12 steps”，后跟转圈），跑完写做了什么（“Searched 3 times, ran a command”，`@tnega/client` 的 `summarizeSteps`）与总用时，点开才看每一步。只有一个工具调用时就是那一行本身；**正在写的思考**不并入，单独一行流式显示，写完再并入。
 - **步骤的样式**（2026-10-23 起，取代带框的 “Used N steps” 卡片）：思考、单个工具调用、折叠的一串步骤和回合的过程折叠，**用同一种行**：图标 · 做了什么（`--text-2`，字重 500）· 次要信息（目标、步数、用时，`--text-3`）· 箭头。行**无框、无底色**，宽度贴合文字（箭头跟在文字后面，不推到最右），悬停或展开时文字变为 `--text`，不加底色；键盘焦点用全局 `:focus-visible`。展开的内容（一串步骤、思考全文、工具详情）一律挂在图标下方的**一条 1px `--border` 竖线**上，不再套卡片；过程折叠点开后，叙述照常显示，叙述之间连续的思考与工具调用**再折成一行**（与进行中的回合同一规则，2026-10-25 起）；整个过程只有一串步骤时（叙述之间没有字），点开后思考逐条显示，**两次思考之间连续的工具调用折成一行**（“Read 2 files, ran a command”，2026-10-26 起）；只有工具调用、没有思考时直接逐条列出，不再二次折叠。折叠行有完整的 `aria-label`（Windows 上按名称找按钮的测试依赖它）。实现：`Timeline` 的 `StepGroup`、`ProcessHead`、`Thought`，样式在 `app.css` 的 “steps” 一节。
 - **过程的开关**（2026-10-15 起）：回合在跑时，它自己的末尾放一行 **Process output** 下拉（`components/Menu.tsx` 的 `Choice`，类名 `.turn-process`，`Timeline` 的 `AgentTurn`）：默认 **Steps**（上一行的行为——叙述、思考与工具调用逐步流出），也可以选 **Answer only**——只留那一行进度，答复在回合结束时出现，过程仍可点开。它跟着这个回合走（回合结束就消失），只决定流式过程显示多少，不改变回合结束后「过程折叠、结论展开」的规则。按设备记住（`tnega.processView`，`lib/process-view.ts`），不进 System Config；只影响 Web 与桌面端，终端界面另有自己的显示方式（§5.8）。
@@ -285,7 +285,7 @@ Agent 周围的天在做什么，就是 Agent 在做什么。每种天气只有�
 - **密钥问题**（2026-10-26 起）：Agent 用 `ask_user_question` 的 `secret`（环境变量名，如 `GITHUB_TOKEN`）要密钥时，问题卡里是一行**隐藏输入**（复用 `.input-with-icon`：`KeyRound` 图标 · `password` 输入框，等宽字体 · 显示 / 隐藏的 `.icon-button.tiny`，`aria-pressed`），没有选项与补充文本框。下面一行 `.muted.small` 写去向（“只在这个会话里使用……命令里用 `$NAME` 读取”），右侧是 **记住** 按钮（`.button.ghost.small`，`aria-pressed`，按下时 `--accent-soft` 底、`--accent-text` 字）：按下则保存到这个工作区（重启后同一工作区的会话都能用），说明文字随之改写。值只交给宿主的密钥库，不进 Session、不回到时间线；Agent 只知道名字。设置里的 **Secrets** 分区（§9）列出名字并可移除。
 
 - **新会话的欢迎**（2026-11-12 起，`components/Welcome.tsx`；**字要少**，只有云、一句问候、输入框和一排起手式）：会话还没有消息时，`.conversation` 加 `is-welcome`，**问候与输入框在页面中间相遇**；第一条消息发出后回到“时间线在上、输入区在下”。从上到下：
-  - **切片云标志**（`Welcome.tsx`）：64px 浅色圆角方片（`--surface-raised` + `--border`）上居中的 6 条墨色切片云，缓慢浮动；欢迎页不画天气。`prefers-reduced-motion` 下静止且所有欢迎元素立显。首次打开的欢迎页（没有工作区时）用同一枚标志。
+  - **切片云标志**（`Welcome.tsx`）：64px 浅色圆角方片（`--surface-raised` + `--border`）上居中横切一刀的墨色云，缓慢浮动；欢迎页不画天气。`prefers-reduced-motion` 下静止且所有欢迎元素立显。首次打开的欢迎页（没有工作区时）用同一枚标志。
   - **一句问候**：`--font-display`、`--text-3xl`、400 字重，两段：按时间的问好用 `--text`，按 Agent 类型的问句用 `--text-3`（coding “What are we building?”，work “What can I take off your plate?”，general “What’s on your mind?”；`lib/welcome.ts`）。不再写“Working in … as …”——工作区已在标题栏。
   - 输入框，下面一排居中的**描边 `.chip`**（图标 + 标题，`--control` 高），完整提示词只在 `title` 里；点一下就发出。
   - **Pick up where you left off**：这个文件夹里最近更新的 3 个会话（`WelcomeRecent`），起手式下方。不套卡片：一行 `--text-3` `--text-sm` 小标签，下面是普通行（`History` 图标 · 标题 `--text-2` · 右侧 `--text-3` 相对时间），悬停 `--surface-hover`，点开该会话。没有会话就整段不显示；窗口矮（≤640px）时也不显示。
@@ -533,7 +533,7 @@ Tnega 的界面上同时有很多 Agent、很多步骤、很多文件。目标�
 
 1. 没有裸色值、裸字号、裸控件高度；颜色只改 `tokens.css`，**所有调色板的两种模式**同步，并跑对比度测试。
 2. 在真实页面里至少看过：浅色与深色；Umbrella 与另一个调色板；Large 字号 + Comfortable 密度。截图与校准用 `/weather.html` 和真实页面，不用脱离实现的效果图。
-3. 新图形沿用 Umbrella 的两层：排版层是精确的扁平形状、无外框、无阴影；表达状态或重点的笔迹只用 `PenMark` / `.pen-underline`，只画在形状里面（§3.8、§3.9）。
+3. 新图形沿用 Umbrella 的两层：排版层是精确的扁平形状、无外框，凸起处只用 §3.8 的高度阶梯；表达状态或重点的笔迹只用 `PenMark` / `.pen-underline`，只画在形状里面（§3.8、§3.9）。
 4. 改标志时同步改 `--brand-cloud` / `--brand-cloud-cuts`、`BRAND_CLOUD`、`Welcome.tsx`、`AgentAvatar.tsx`、favicon 与 `apps/desktop/build/icon.svg`，并重新生成安装包图标。
 5. 测试与源文件同目录，覆盖用户可见的行为；跑 `pnpm exec vitest run apps/web`。改了颜色跑 `contrast.test.ts`，改了玻璃或新增浮层跑 `glass.test.ts`。
 6. 用户可见的变化写在 PR 描述里，不改 `CHANGELOG.md`（由发布准备 PR 统一写入）；改变了设计规则的，同一次改动里更新本文。

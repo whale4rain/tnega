@@ -22,6 +22,7 @@ import type { ProcessView } from '../lib/process-view'
 import type { Block, Entry, SubagentView, ToolView } from '../lib/timeline'
 import { formatDuration, formatTokens, presentLive, presentOutcome, presentRun, stringify } from '../lib/timeline'
 import { officeFiles } from '../lib/office'
+import { settleMarkdown, useSmoothText } from '../lib/streaming'
 import { codeModeOutput, needsAttention, presentTool, readableOutput, summarizeSteps } from '../lib/tools'
 import { AgentAvatar } from './AgentAvatar'
 import { PenMark, type PenKind } from './PenMark'
@@ -398,9 +399,11 @@ const AgentTurn = memo(function AgentTurn({
   const [copied, copy] = useCopy()
   const text = entry.blocks.filter(b => b.kind === 'text').map(b => b.text).join('\n\n')
   const last = entry.blocks.at(-1)
-  // A running step or streaming text already shows activity; otherwise say the model is working.
+  // A running step or reply text already shows activity; otherwise say the model is working. Text
+  // that just finished counts too: a "Working" line flashing under the answer in the moment before the
+  // run ends only made the transcript jump.
   const thinking = live && presentation.process.length === 0
-    && !(last?.kind === 'text' && last.streaming)
+    && last?.kind !== 'text'
     && !(last?.kind === 'tool' && last.tool.status === 'running')
     && !(last?.kind === 'subagent' && (last.agent.status === 'running' || last.agent.status === 'starting'))
   // Produced files stay visible even when the tools that wrote them fold into the process.
@@ -410,9 +413,9 @@ const AgentTurn = memo(function AgentTurn({
     switch (seg.kind) {
       case 'text':
         return (
-          <div key={seg.id} className={seg.streaming ? 'streaming' : undefined}>
-            <Markdown text={seg.text} />
-          </div>
+          seg.streaming && live
+            ? <StreamingText key={seg.id} text={seg.text} />
+            : <div key={seg.id}><Markdown text={seg.text} /></div>
         )
       case 'steps':
         return <StepGroup key={seg.id} steps={seg.steps} live={live} />
@@ -592,6 +595,19 @@ function Thought({ text, streaming, durationMs }: { text: string; streaming: boo
         <ChevronRight size={14} className="chevron" aria-hidden />
       </button>
       {open && <div ref={body} className={`thought-body${streaming ? ' is-live' : ''}`}>{text}</div>}
+    </div>
+  )
+}
+
+/**
+ * A reply that is still arriving (umbrella/conversation.md, Streaming): revealed at an even pace, with
+ * half-written Markdown held back until it closes, so no raw `**` or pipes flash on screen.
+ */
+function StreamingText({ text }: { text: string }) {
+  const shown = useSmoothText(text, true)
+  return (
+    <div className="streaming">
+      <Markdown text={settleMarkdown(shown)} />
     </div>
   )
 }

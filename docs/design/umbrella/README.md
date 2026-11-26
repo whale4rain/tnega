@@ -9,7 +9,7 @@ The visual reference is the design canvas, boards 9 to 10c ("Scribble for real" 
 ## The idea in four sentences
 
 1. **Two layers.** The *set layer* (layout, panels, cards, fields, buttons, type) is exact and flat. The *hand layer* is a pen marking it up: status marks, a loop around what needs you, an underline under two words, hatching inside progress.
-2. **Tone, not lines.** Things are told apart by shades of grey: ground, then panel, then card. There are no outline borders and no shadows on the page. Only menus and dialogs, which sit on top of content, have a shadow.
+2. **Tone, not lines.** Things are told apart by shades of grey: ground, then panel, then card. There are no outline borders. Raised shapes get a soft elevation step (a hairline ring and a wide, faint shadow) so panels float and cards rest on them; menus and dialogs get the deepest ones. See [foundations.md](foundations.md#elevation).
 3. **One thing, one shape.** Nothing gets a frame inside a frame, and no box gets a header bar. A component is one shape: a pill, a rounded card, a sunken field or a round button.
 4. **Whose turn is it?** Every list and every card answers this first. Anything waiting on you rises to the top, carries the *you* mark (a dot circled by hand), and is the only thing in full ink. Everything else steps back to the second grey.
 
@@ -29,6 +29,7 @@ The visual reference is the design canvas, boards 9 to 10c ("Scribble for real" 
 | [dialogs.md](dialogs.md) | Dialogs, confirmations, Settings |
 | [welcome-and-empty.md](welcome-and-empty.md) | Welcome, empty states, loading, errors |
 | [phone.md](phone.md) | Narrow windows and phones: sheets, targets, what changes and what doesn't |
+| [session-inventory.md](session-inventory.md) | The session screens split into 53 parts, each with its elevation step and polish note |
 | [implementation.md](implementation.md) | Where each component lives in code, the classes and tokens it uses, and the migration status |
 
 ## How to use this when you build

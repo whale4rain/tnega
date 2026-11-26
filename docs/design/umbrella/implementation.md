@@ -11,7 +11,7 @@ Status: **done** means built to this spec; **partial** means the tokens and shap
 | Underline, hatching, drawn arrow | [hand-layer.md](hand-layer.md) | `app.css` hand layer section | `.pen-underline`, `.pen-hatch`, `.pen-arrow` | partial |
 | Ground and floating panels | [shell.md](shell.md) | `App.tsx`, `styles/app.css`, `styles/workbench.css` | `.app`, `.app > main`, `.workbench`, `--panel-gap` | done |
 | Sidebar | [sidebar.md](sidebar.md) | `components/Sidebar.tsx` | `.sidebar-start`, `.sidebar-new`, `.sidebar-plus`, `.sidebar-search`, `.sidebar-group-head`, `.session-item`, `.sidebar-round` | done |
-| Conversation header, Work pill | [conversation.md](conversation.md) | `components/Conversation.tsx`, `components/Composer.tsx` (`SessionControls`) | `.conv-header`, `.work-pill` | partial |
+| Conversation header, Workbench pill | [conversation.md](conversation.md) | `components/Conversation.tsx`, `components/Composer.tsx` (`SessionControls`) | `.conv-header`, `.work-pill` | partial |
 | Agent turn, disc, result cards | [conversation.md](conversation.md) | `components/Timeline.tsx` | `.turn`, `.turn-disc`, `.result-card` | done |
 | Your message | [conversation.md](conversation.md) | `components/Timeline.tsx` | `.user-bubble` | done |
 | Steps | [conversation.md](conversation.md) | `components/Timeline.tsx` (`ProcessHead`, `StepGroup`, `ToolRow`) | `.process-head`, `.tool-row` | done |
