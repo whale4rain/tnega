@@ -72,7 +72,8 @@ describe('App', () => {
     await type('\r')
     await until(() => frame().includes('Allow shell?'))
     expect(frame()).toContain('npm test')
-    expect(frame()).toContain('Waiting for you')
+    // The your-turn mark, beside its words, in the panel and on the status line.
+    expect(frame()).toContain('◉ Waiting for you')
     // A stray Enter must not approve.
     await type('\r')
     expect(server.calls.some(call => call.path.endsWith('/approvals/a1'))).toBe(false)

@@ -45,10 +45,10 @@ and MCP commands. The TUI adds `/new`, `/sessions`, `/continue`, `/usage`,
 - `transcript.tsx`, `markdown.tsx`: entries and Markdown as Ink elements.
 - `views.tsx`, `picker.tsx`, `prompts.tsx`: panels, lists, approvals, questions.
 - `hints.tsx`, `terminal.ts`: the key hint row, the `?` key sheet, and the kitty keyboard check.
-- `weather.tsx`: the brand cloud at the top of a session and the coloured weather strip in the status line.
+- `weather.tsx`: the brand umbrella at the top of a session, the coloured weather strip in the status line and the hand mark beside its label.
 
 The row under the prompt names the keys that matter right now (`hints.tsx`).
 Shift+Enter only works where the terminal speaks the kitty keyboard protocol;
 the TUI asks once at start (`terminal.ts`) and names Ctrl+J instead elsewhere.
 
-`TNEGA_REDUCED_MOTION=1` stills the spinners and the weather strip.
+`TNEGA_REDUCED_MOTION=1` stills the turning working mark (`◐`) and the weather strip.

@@ -1,13 +1,14 @@
 /**
  * The weather in pictures: a short animated strip beside the status label
- * while the agent works, and the brand cloud drawn in half-block pixels at
- * the top of a session. The strip never adds a row; the cloud is printed
- * once and never moves.
+ * while the agent works, and the brand umbrella drawn in half-block pixels
+ * at the top of a session. The strip never adds a row; the umbrella is
+ * printed once and never moves.
  */
 import type { Weather } from '@tnega/client'
 import { Box, Text, useAnimation } from 'ink'
 import type { ReactNode } from 'react'
 import { reducedMotion } from './spinner.js'
+import { color, type Mark } from './theme.js'
 
 /** One coloured run of characters. */
 export interface Segment {
@@ -72,25 +73,33 @@ export const SKY: Record<Weather, readonly Segment[][]> = {
 /** Weathers that move: something is happening right now. */
 const MOVING: ReadonlySet<Weather> = new Set(['cloudy', 'drizzle', 'rain', 'snow', 'sleet', 'storm', 'fog', 'sprite'])
 
-/** The label's colour, matching its strip. */
-export function weatherTone(weather: Weather): string | undefined {
+/**
+ * The hand mark beside the status label: whose turn it is, in the same
+ * vocabulary as the web app (design guide §3.9). The strip says what the
+ * agent is doing; the mark says whether that is yours to act on.
+ */
+export function weatherMark(weather: Weather): Mark {
   switch (weather) {
+    case 'snow':
+      return 'you'
+    case 'storm':
+      return 'failed'
+    case 'rainbow':
+      return 'done'
+    case 'cloudy':
     case 'drizzle':
     case 'rain':
-      return BLUE
-    case 'snow':
-    case 'fog':
     case 'sleet':
-      return 'yellow'
-    case 'storm':
-      return 'red'
-    case 'rainbow':
-      return 'green'
     case 'sprite':
-      return MAGENTA
+      return 'working'
     default:
-      return undefined
+      return 'idle'
   }
+}
+
+/** The label stays ink; only a failure takes the error colour. */
+export function weatherTone(weather: Weather): string | undefined {
+  return weather === 'storm' ? color.danger : undefined
 }
 
 /** One frame padded to STRIP_WIDTH cells; the idle sun stays a single mark. */
@@ -119,72 +128,57 @@ function Segments({ segments }: { segments: readonly Segment[] }) {
   )
 }
 
-/** The brand cloud (apps/desktop/build/icon.svg) at 10 × 8 pixels; the gaps are its eyes. */
-const CLOUD = [
-  '...####...',
-  '..######..',
-  '.########.',
-  '###.##.###',
-  '###.##.###',
-  '.########.',
-  '.########.',
-  '..######..',
+/**
+ * The brand umbrella (design guide §2) at 15 × 12 pixels: tip, canopy with
+ * a scalloped hem, shaft and hook. The two gaps in the canopy are its eyes.
+ */
+const UMBRELLA = [
+  '.......#.......',
+  '.....#####.....',
+  '...#########...',
+  '..###########..',
+  '.####.###.####.',
+  '#####.###.#####',
+  '###############',
+  '#..#..###..#..#',
+  '.......#.......',
+  '.......#.......',
+  '.......#..#....',
+  '........##.....',
 ]
 
-type Pixel = 'cloud' | 'sun' | undefined
+const CANVAS = { width: UMBRELLA[0]!.length, height: UMBRELLA.length }
 
-const SUN = { x: 12, y: 3, r: 2.7 }
-const CANVAS = { width: 15, height: 10 }
-
-function pixel(x: number, y: number): Pixel {
-  const row = CLOUD[y - 1]
-  if (row?.[x - 1] === '#') return 'cloud'
-  if ((x - SUN.x) ** 2 + (y - SUN.y) ** 2 <= SUN.r ** 2) return 'sun'
-  return undefined
+function inked(x: number, y: number): boolean {
+  return UMBRELLA[y]?.[x] === '#'
 }
 
 /**
- * The cloud with the sun behind it, two pixels per cell. The cloud takes the
- * terminal's own foreground so it reads on light and dark themes; where a
- * cell holds both, the cloud wins.
+ * The umbrella two pixels per cell, in the terminal's own foreground: ink
+ * on whatever ground the terminal has, light or dark, with no colour.
  */
-export function cloudRows(): Segment[][] {
-  const rows: Segment[][] = []
+export function umbrellaRows(): string[] {
+  const rows: string[] = []
   for (let y = 0; y < CANVAS.height; y += 2) {
-    const row: Segment[] = []
+    let row = ''
     for (let x = 0; x < CANVAS.width; x += 1) {
-      const top = pixel(x, y)
-      const bottom = pixel(x, y + 1)
-      const cell = cellFor(top, bottom)
-      const last = row.at(-1)
-      if (last && last.color === cell.color) last.text += cell.text
-      else row.push(cell)
+      const top = inked(x, y)
+      const bottom = inked(x, y + 1)
+      row += top && bottom ? '█' : top ? '▀' : bottom ? '▄' : ' '
     }
     rows.push(row)
   }
   return rows
 }
 
-function cellFor(top: Pixel, bottom: Pixel): Segment {
-  if (top === 'cloud' || bottom === 'cloud') {
-    const text = top === 'cloud' && bottom === 'cloud' ? '█' : top === 'cloud' ? '▀' : '▄'
-    return { text }
-  }
-  if (top === 'sun' && bottom === 'sun') return { text: '█', color: 'yellow' }
-  if (top === 'sun') return { text: '▀', color: 'yellow' }
-  if (bottom === 'sun') return { text: '▄', color: 'yellow' }
-  return { text: ' ' }
-}
+/** Cells the header umbrella takes, gap included. */
+export const UMBRELLA_WIDTH = CANVAS.width + 2
 
-/** Cells the header cloud takes, gap included. */
-export const CLOUD_WIDTH = CANVAS.width + 2
-
-export function HeaderCloud({ lines }: { lines: ReactNode }) {
-  const rows = cloudRows()
+export function HeaderUmbrella({ lines }: { lines: ReactNode }) {
   return (
     <Box flexDirection="row">
-      <Box flexDirection="column" width={CLOUD_WIDTH} flexShrink={0}>
-        {rows.map((row, index) => <Text key={index}><Segments segments={row} /></Text>)}
+      <Box flexDirection="column" width={UMBRELLA_WIDTH} flexShrink={0}>
+        {umbrellaRows().map((row, index) => <Text key={index}>{row}</Text>)}
       </Box>
       <Box flexDirection="column" justifyContent="center">
         {lines}

@@ -28,8 +28,8 @@ import { KeyHints, KeySheet } from './hints.js'
 import { Picker, type PickerItem } from './picker.js'
 import { ApprovalPanel, QuestionPanel } from './prompts.js'
 import { Spinner } from './spinner.js'
-import { color, glyph, tint } from './theme.js'
-import { CLOUD_WIDTH, HeaderCloud, STRIP_WIDTH, WeatherStrip, weatherTone } from './weather.js'
+import { color, glyph, mark, tint } from './theme.js'
+import { HeaderUmbrella, STRIP_WIDTH, UMBRELLA_WIDTH, WeatherStrip, weatherMark, weatherTone } from './weather.js'
 import { AgentTurn, EntryView } from './transcript.js'
 import { ChangesView, HelpView, SettingsView, UsageView } from './views.js'
 import { padEnd, stringWidth, truncate } from './width.js'
@@ -336,8 +336,8 @@ function liveEntryIndex(state: TuiState): number | undefined {
 }
 
 function Banner({ state, hidden, width }: { state: TuiState; hidden: number; width: number }) {
-  const showCloud = width >= CLOUD_WIDTH + 30
-  const textWidth = showCloud ? width - CLOUD_WIDTH : width
+  const showUmbrella = width >= UMBRELLA_WIDTH + 30
+  const textWidth = showUmbrella ? width - UMBRELLA_WIDTH : width
   const lines = (
     <>
       <Text>
@@ -349,7 +349,7 @@ function Banner({ state, hidden, width }: { state: TuiState; hidden: number; wid
   )
   return (
     <Box flexDirection="column" width={width}>
-      {showCloud ? <HeaderCloud lines={lines} /> : lines}
+      {showUmbrella ? <HeaderUmbrella lines={lines} /> : lines}
       {hidden > 0 && <Text dimColor>{hidden} earlier entries are not shown here; /web shows the whole session.</Text>}
     </Box>
   )
@@ -370,19 +370,21 @@ function StatusLine({ state, controller, width }: { state: TuiState; controller:
   const settings = controller.settings
   const model = controller.model
   const tone = weatherTone(weather)
+  // Idle needs no mark: the sun beside "Ready" already says nothing is going on.
+  const turn = weatherMark(weather)
   const ratio = state.context && state.context.limit > 0 ? state.context.ratio : undefined
   const cost = formatCost(state.usage?.cost)
   const right = [ratio !== undefined ? `${Math.round(ratio * 100)}% context` : undefined, cost].filter(Boolean).join(` ${glyph.bullet} `)
   const mode = settings.mode !== 'auto' ? settings.mode : undefined
   const left = [model?.name, settings.agentType, mode, settings.permission, settings.approvalMode === 'auto' ? 'auto-approve' : undefined]
     .filter(Boolean).join(` ${glyph.bullet} `)
-  const shown = truncate(left, Math.max(10, width - 20 - STRIP_WIDTH - right.length))
+  const shown = truncate(left, Math.max(10, width - 20 - STRIP_WIDTH - 2 - right.length))
   // A non-default mode changes what Enter does, so it stands out from the rest.
   const modeAt = mode ? shown.indexOf(` ${glyph.bullet} ${mode}`) : -1
   return (
     <Box width={width} justifyContent="space-between">
       <Text>
-        <WeatherStrip weather={weather} /> <Text {...tint(tone)}>{WEATHER_LABEL[weather]}</Text>
+        <WeatherStrip weather={weather} /> <Text {...tint(tone)} bold={turn === 'you'}>{turn === 'idle' ? '' : `${mark[turn]} `}{WEATHER_LABEL[weather]}</Text>
         {modeAt < 0
           ? <Text dimColor>  {shown}</Text>
           : (
@@ -563,7 +565,7 @@ function QueuedRows({ queued, live, width }: { queued: readonly string[]; live: 
         return (
           <Box key={index} width={width} justifyContent="space-between">
             <Text>
-              <Text dimColor>{'  '}queued  </Text>
+              <Text dimColor>{'  '}{mark.waiting} queued  </Text>
               {truncate(text.replace(/\s+/g, ' '), Math.max(8, room))}
             </Text>
             {last ? <Text dimColor>{actions}</Text> : null}
